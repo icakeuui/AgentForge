@@ -1,0 +1,123 @@
+id: builtin
+name: Builtin Tools
+description: Built-in tools provided by AgentForge
+icon_url: https://cdn-icons-png.flaticon.com/128/1004/1004771.png
+tool_type: builtin
+categories: ["utilities"]
+author: AgentForge
+homepage: https://github.com
+popularity: 100
+is_official: true
+
+tools:
+  - name: echo
+    display_name: Echo
+    description: Echo back the input text
+    risk_level: low
+    side_effect: none
+    requires_confirmation: false
+    allowed_intents: ["DIRECT_CHAT", "TOOL_OPTIONAL", "TOOL_REQUIRED"]
+    domains: ["utility"]
+    max_calls_per_run: 2
+    input_schema:
+      type: object
+      properties:
+        text:
+          type: string
+          description: Text to echo back
+      required: ["text"]
+
+  - name: python_exec
+    display_name: Python Executor
+    description: Execute Python code and return the result
+    risk_level: high
+    side_effect: write
+    requires_confirmation: true
+    allowed_intents: ["HIGH_RISK_TOOL", "TOOL_REQUIRED"]
+    domains: ["python"]
+    max_calls_per_run: 1
+    input_schema:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Python code to execute
+      required: ["code"]
+
+  - name: calculate
+    display_name: 运算
+    description: Safely calculate a basic arithmetic expression
+    risk_level: low
+    side_effect: none
+    requires_confirmation: false
+    allowed_intents: ["TOOL_OPTIONAL", "TOOL_REQUIRED"]
+    domains: ["calculator", "utility"]
+    max_calls_per_run: 4
+    input_schema:
+      type: object
+      properties:
+        expression:
+          type: string
+          description: Arithmetic expression to calculate
+      required: ["expression"]
+
+  - name: caculate
+    display_name: 运算
+    description: Compatibility alias for calculate
+    risk_level: low
+    side_effect: none
+    requires_confirmation: false
+    allowed_intents: ["TOOL_OPTIONAL", "TOOL_REQUIRED"]
+    domains: ["calculator", "utility"]
+    max_calls_per_run: 4
+    input_schema:
+      type: object
+      properties:
+        expression:
+          type: string
+          description: Arithmetic expression to calculate
+      required: ["expression"]
+
+  - name: websearch
+    display_name: 网页搜索
+    description: Search the web for current public information
+    risk_level: medium
+    side_effect: external_read
+    requires_confirmation: false
+    allowed_intents: ["TOOL_OPTIONAL", "TOOL_REQUIRED"]
+    domains: ["web_search"]
+    max_calls_per_run: 2
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query
+        limit:
+          type: integer
+          description: Maximum number of results to return
+          minimum: 1
+          maximum: 5
+      required: ["query"]
+
+  - name: web_search
+    display_name: 网页搜索
+    description: Compatibility alias for websearch
+    risk_level: medium
+    side_effect: external_read
+    requires_confirmation: false
+    allowed_intents: ["TOOL_OPTIONAL", "TOOL_REQUIRED"]
+    domains: ["web_search"]
+    max_calls_per_run: 2
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query
+        limit:
+          type: integer
+          description: Maximum number of results to return
+          minimum: 1
+          maximum: 5
+      required: ["query"]

@@ -1,0 +1,48 @@
+id: brave_search
+name: Brave Search
+description: Search the web with Brave Search through an MCP-compatible server
+icon_url: https://brave.com/static-assets/images/brave-favicon.png
+tool_type: mcp
+categories: ["search", "web"]
+author: Brave
+homepage: https://brave.com/search/api/
+popularity: 80
+is_official: false
+
+config:
+  - key: BRAVE_API_KEY
+    label: Brave Search API Key
+    type: password
+    required: true
+    placeholder: BSA...
+    help_text: Required to query the Brave Search API on the user's behalf.
+
+mcp:
+  transport: stdio
+  command: npx
+  args:
+    - "-y"
+    - "@modelcontextprotocol/server-brave-search"
+  env_vars:
+    BRAVE_API_KEY: ""
+
+tools:
+  - name: web_search
+    display_name: Web Search
+    description: Search the web using Brave Search
+    risk_level: medium
+    side_effect: external_read
+    requires_confirmation: false
+    allowed_intents: ["TOOL_REQUIRED", "TOOL_OPTIONAL"]
+    domains: ["web_search", "web"]
+    max_calls_per_run: 3
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query
+        count:
+          type: integer
+          default: 10
+      required: ["query"]

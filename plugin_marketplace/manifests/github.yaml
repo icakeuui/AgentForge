@@ -1,0 +1,90 @@
+id: github
+name: GitHub
+description: Access GitHub APIs for repository management, issues, pull requests, and code search
+icon_url: https://github.githubassets.com/favicons/favicon.svg
+tool_type: mcp
+categories: ["development", "code", "collaboration"]
+author: GitHub
+homepage: https://github.com
+popularity: 100
+is_official: true
+
+config:
+  - key: GITHUB_TOKEN
+    label: GitHub Personal Access Token
+    type: password
+    required: true
+    placeholder: ghp_xxx
+    help_text: Required to access repositories, pull requests, and issues on behalf of the user.
+
+mcp:
+  transport: stdio
+  command: npx
+  args:
+    - "-y"
+    - "@modelcontextprotocol/server-github"
+  env_vars:
+    GITHUB_TOKEN: ""
+
+tools:
+  - name: search_repos
+    display_name: Search Repositories
+    description: Search GitHub repositories by keyword
+    risk_level: medium
+    side_effect: external_read
+    requires_confirmation: false
+    allowed_intents: ["TOOL_REQUIRED", "TOOL_OPTIONAL"]
+    domains: ["github", "code", "repository"]
+    max_calls_per_run: 3
+    input_schema:
+      type: object
+      properties:
+        q:
+          type: string
+          description: Search query
+        limit:
+          type: integer
+          default: 10
+      required: ["q"]
+
+  - name: get_issue
+    display_name: Get Issue
+    description: Get details of a GitHub issue
+    risk_level: medium
+    side_effect: external_read
+    requires_confirmation: false
+    allowed_intents: ["TOOL_REQUIRED", "TOOL_OPTIONAL"]
+    domains: ["github", "issue", "repository"]
+    max_calls_per_run: 3
+    input_schema:
+      type: object
+      properties:
+        owner:
+          type: string
+        repo:
+          type: string
+        issue_number:
+          type: integer
+      required: ["owner", "repo", "issue_number"]
+
+  - name: create_issue
+    display_name: Create Issue
+    description: Create a new GitHub issue
+    risk_level: high
+    side_effect: external_write
+    requires_confirmation: true
+    allowed_intents: ["HIGH_RISK_TOOL", "TOOL_REQUIRED"]
+    domains: ["github", "issue", "repository"]
+    max_calls_per_run: 1
+    input_schema:
+      type: object
+      properties:
+        owner:
+          type: string
+        repo:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+      required: ["owner", "repo", "title"]

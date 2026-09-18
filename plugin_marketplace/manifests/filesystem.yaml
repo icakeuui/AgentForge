@@ -1,0 +1,78 @@
+id: filesystem
+name: Filesystem
+description: Read, write, and manage files on the local filesystem
+icon_url: https://upload.wikimedia.org/wikipedia/commons/3/3c/Icons8_flat_folder.svg
+tool_type: mcp
+categories: ["utilities", "files"]
+author: AgentForge
+homepage: https://github.com
+popularity: 95
+is_official: true
+
+config:
+  - key: root_path
+    label: Allowed Root Path
+    type: text
+    required: true
+    placeholder: C:\Users\your-name\Documents
+    help_text: The filesystem tool will be restricted to this directory tree.
+
+mcp:
+  transport: stdio
+  command: npx
+  args:
+    - "-y"
+    - "@modelcontextprotocol/server-filesystem"
+  env_vars: {}
+
+tools:
+  - name: read_file
+    display_name: Read File
+    description: Read the contents of a file
+    risk_level: medium
+    side_effect: read
+    requires_confirmation: false
+    allowed_intents: ["TOOL_REQUIRED", "TOOL_OPTIONAL"]
+    domains: ["filesystem", "file"]
+    max_calls_per_run: 3
+    input_schema:
+      type: object
+      properties:
+        path:
+          type: string
+          description: Absolute path to the file
+      required: ["path"]
+
+  - name: write_file
+    display_name: Write File
+    description: Write content to a file
+    risk_level: high
+    side_effect: write
+    requires_confirmation: true
+    allowed_intents: ["HIGH_RISK_TOOL", "TOOL_REQUIRED"]
+    domains: ["filesystem", "file"]
+    max_calls_per_run: 1
+    input_schema:
+      type: object
+      properties:
+        path:
+          type: string
+        content:
+          type: string
+      required: ["path", "content"]
+
+  - name: list_directory
+    display_name: List Directory
+    description: List files in a directory
+    risk_level: medium
+    side_effect: read
+    requires_confirmation: false
+    allowed_intents: ["TOOL_REQUIRED", "TOOL_OPTIONAL"]
+    domains: ["filesystem", "file"]
+    max_calls_per_run: 3
+    input_schema:
+      type: object
+      properties:
+        path:
+          type: string
+      required: ["path"]

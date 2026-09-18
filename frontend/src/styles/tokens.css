@@ -1,0 +1,101 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --font-sans: 'Plus Jakarta Sans', Inter, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+
+  --radius-md: 12px;
+  --radius-lg: 18px;
+
+  --container-max: 1280px;
+
+  --app-background-image: none;
+}
+
+:root,
+:root[data-theme='light'] {
+  --color-bg: #f8fafc;
+  --color-bg-soft: #f1f5f9;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+
+  --color-text-main: #0f172a;
+  --color-text-sub: #475569;
+  --color-text-muted: #64748b;
+
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+
+  --color-success: #16a34a;
+  --color-success-soft: #f0fdf4;
+  --color-error: #dc2626;
+  --color-error-soft: #fef2f2;
+  --color-warning: #d97706;
+  --color-warning-soft: #fff7ed;
+  --color-info: #2563eb;
+  --color-info-soft: #eff6ff;
+
+  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.06);
+  --shadow-xl: 0 14px 24px -8px rgba(15, 23, 42, 0.15);
+}
+
+:root[data-theme='dark'] {
+  --color-bg: #09111b;
+  --color-bg-soft: #111c29;
+  --color-surface: rgba(14, 25, 38, 0.92);
+  --color-border: #1d3145;
+
+  --color-text-main: #e5eef8;
+  --color-text-sub: #bdd0e4;
+  --color-text-muted: #88a0b8;
+
+  --color-primary: #38bdf8;
+  --color-primary-hover: #0ea5e9;
+
+  --color-success: #22c55e;
+  --color-success-soft: rgba(34, 197, 94, 0.14);
+  --color-error: #f87171;
+  --color-error-soft: rgba(248, 113, 113, 0.14);
+  --color-warning: #f59e0b;
+  --color-warning-soft: rgba(245, 158, 11, 0.14);
+  --color-info: #38bdf8;
+  --color-info-soft: rgba(56, 189, 248, 0.14);
+
+  --shadow-sm: 0 8px 18px -12px rgba(3, 7, 18, 0.72);
+  --shadow-xl: 0 24px 44px -20px rgba(2, 8, 23, 0.78);
+  --app-background-image:
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.14), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(20, 184, 166, 0.1), transparent 30%),
+    linear-gradient(180deg, rgba(8, 15, 24, 0.98), rgba(9, 17, 27, 0.98));
+}
+
+:root[data-theme='summer'] {
+  --color-bg: #f4fbff;
+  --color-bg-soft: #e9f8f5;
+  --color-surface: rgba(255, 255, 255, 0.86);
+  --color-border: #cfe5ea;
+
+  --color-text-main: #0f2535;
+  --color-text-sub: #335569;
+  --color-text-muted: #5f7f93;
+
+  --color-primary: #0f766e;
+  --color-primary-hover: #115e59;
+
+  --color-success: #16a34a;
+  --color-success-soft: rgba(22, 163, 74, 0.12);
+  --color-error: #dc2626;
+  --color-error-soft: rgba(220, 38, 38, 0.12);
+  --color-warning: #d97706;
+  --color-warning-soft: rgba(217, 119, 6, 0.14);
+  --color-info: #0284c7;
+  --color-info-soft: rgba(2, 132, 199, 0.12);
+
+  --shadow-sm: 0 10px 24px -18px rgba(15, 118, 110, 0.42);
+  --shadow-xl: 0 26px 48px -24px rgba(15, 118, 110, 0.28);
+  --app-background-image:
+    radial-gradient(circle at top left, rgba(52, 211, 153, 0.18), transparent 34%),
+    radial-gradient(circle at top right, rgba(251, 146, 60, 0.16), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.12), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(251, 191, 36, 0.11), transparent 24%);
+}

@@ -1,0 +1,53 @@
+# AgentForge Global Configuration YAML
+
+# Base App Settings
+APP_NAME: "AgentForge-Backend-Service"
+ENV: "dev"
+LOG_LEVEL: "INFO"
+CORS_ALLOWED_ORIGINS:
+  - "http://localhost:3000"
+  - "http://localhost:4174"
+  - "http://localhost:4175"
+  - "http://localhost:5173"
+  - "http://127.0.0.1:3000"
+  - "http://127.0.0.1:4174"
+  - "http://127.0.0.1:4175"
+  - "http://127.0.0.1:5173"
+  - "http://localhost:5276"
+  - "http://127.0.0.1:5276"
+
+# Database Configuration (Defaults)
+# Dev/local runs are normalized to PROJECT_ROOT/agentforge_preview.db in backend/core/config.py.
+DB_URL: "sqlite+aiosqlite:///./agentforge_preview.db"
+
+# Redis Configuration (Defaults)
+REDIS_URL: "redis://localhost:6379/0"
+
+# SMTP Configuration (Defaults)
+SMTP_HOST: "smtp.qq.com"
+SMTP_PORT: 587
+SMTP_USERNAME: ""
+SMTP_PASSWORD: ""
+SMTP_FROM_EMAIL: ""
+SMTP_FROM_NAME: "AgentForge"
+SMTP_USE_TLS: true
+SMTP_USE_SSL: false
+SMTP_TIMEOUT_SECONDS: 10
+EMAIL_DELIVERY_MODE: "smtp"
+
+# Avatar Storage Configuration
+AVATAR_STORAGE_PROVIDER: "local"
+AVATAR_PUBLIC_BASE_URL: ""
+OBJECT_STORAGE_ENDPOINT: ""
+OBJECT_STORAGE_REGION: ""
+OBJECT_STORAGE_BUCKET: ""
+OBJECT_STORAGE_ACCESS_KEY: ""
+OBJECT_STORAGE_SECRET_KEY: ""
+OBJECT_STORAGE_PUBLIC_BASE_URL: ""
+OBJECT_STORAGE_USE_SSL: true
+OBJECT_STORAGE_VERIFY_TLS: true
+OBJECT_STORAGE_FORCE_PATH_STYLE: true
+OBJECT_STORAGE_PUBLIC_READ: true
+
+# Model Gateway Settings (Placeholders)
+MODEL_API_KEY: "PLACEHOLDER_KEY"
