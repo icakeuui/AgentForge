@@ -24,6 +24,7 @@ from backend.models.schemas import (
     RegisterVerifyRequest,
     RegisterVerifyResponse,
     TokenPairResponse,
+    UpdateProfileRequest,
 )
 from backend.services.account_service import account_service
 from backend.services.avatar_storage_service import avatar_storage_service
@@ -164,3 +165,20 @@ async def password_reset(payload: PasswordResetRequest, db: AsyncSession = Depen
 async def session(auth: AuthContext = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     profile = await account_service.get_profile_for_auth(db, auth)
     return BaseResponse.success(data=profile, message="OK")
+
+
+@router.patch("/profile", response_model=BaseResponse[AuthUserProfile])
+async def update_profile(
+    payload: UpdateProfileRequest,
+    auth: AuthContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    fields_set = payload.model_fields_set
+    profile = await account_service.update_profile(
+        db,
+        auth,
+        display_name=payload.display_name,
+        avatar_url=payload.avatar_url,
+        update_avatar="avatar_url" in fields_set,
+    )
+    return BaseResponse.success(data=profile, message="Profile updated")

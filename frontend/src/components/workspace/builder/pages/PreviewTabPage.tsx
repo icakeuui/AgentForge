@@ -22,7 +22,16 @@ const STATUS_LABEL: Record<ExecutionStatus, string> = {
   RUNNING: '执行中',
   SUCCEEDED: '已完成',
   FAILED: '失败',
-  TERMINATED: '已中断',
+  TERMINATED: '已终止',
+}
+
+function executionStatusLabel(status: ExecutionStatus, reason: string | null): string {
+  if (status === 'TERMINATED') {
+    if (reason === 'OUTPUT_LIMIT_REACHED' || reason === 'MODEL_OUTPUT_TRUNCATED') return '达到输出上限'
+    if (reason === 'MAX_STEPS_REACHED') return '达到步数上限'
+    if (reason === 'USER_STOPPED') return '用户已取消'
+  }
+  return STATUS_LABEL[status]
 }
 
 function assistantPreviewContent(status: ExecutionStatus, finalAnswer: string | null, errorMessage: string | null, terminationReason: string | null): string | null {
@@ -294,7 +303,9 @@ export function PreviewTabPage() {
                 tone={message.source === 'opening' || message.source === 'activity' ? 'muted' : 'normal'}
                 content={renderMessageContent(message)}
                 contentText={message.content}
+                attachments={message.attachments}
                 status={message.status}
+                terminationReason={message.termination_reason}
                 showActions={message.role === 'assistant' && message.source !== 'opening' && message.source !== 'activity'}
                 showStatus={message.role === 'assistant' && message.source !== 'opening' && message.source !== 'activity'}
                 onRegenerate={message.role === 'assistant' && regenerateInput !== null ? () => handleRegenerate(regenerateInput) : undefined}
@@ -321,6 +332,7 @@ export function PreviewTabPage() {
               content={<RichContentRenderer content={liveContent} showTextCopy={false} />}
               contentText={liveContent}
               status={status}
+              terminationReason={termination_reason}
               onRegenerate={() => handleRegenerate(last_user_input)}
             />
           ) : null}
@@ -338,7 +350,7 @@ export function PreviewTabPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={status === 'FAILED' || status === 'TERMINATED' ? 'error' : status === 'SUCCEEDED' ? 'success' : 'info'}>
-            {STATUS_LABEL[status]}
+            {executionStatusLabel(status, termination_reason)}
           </Badge>
           <Button size="sm" variant="ghost" onClick={() => openRunLogsTab({ executionId: current_execution_id, stepIndex: null })}>
             查看运行日志

@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config import settings
-from backend.core.exceptions import AuthException, FlowException, NotFoundException
+from backend.core.exceptions import AuthException, FlowException, NotFoundException, ValidationException
 from backend.models.constants import ResponseCode
 from backend.models.orm import (
     EmailVerificationCode,
@@ -308,6 +308,30 @@ class AccountService:
             team_id = str(team_member.team_id)
             role = team_member.role
         return self._profile(user, team_id=team_id, role=role)
+
+    async def update_profile(
+        self,
+        session: AsyncSession,
+        auth: AuthContext,
+        *,
+        display_name: str | None = None,
+        avatar_url: str | None = None,
+        update_avatar: bool = False,
+    ) -> AuthUserProfile:
+        user = await session.get(User, auth.user_id)
+        if user is None:
+            raise NotFoundException("User not found")
+        if display_name is not None:
+            normalized_name = display_name.strip()
+            if not normalized_name or len(normalized_name) > 80:
+                raise ValidationException("昵称长度须为 1 到 80 个字符")
+            user.display_name = normalized_name
+        if update_avatar:
+            if avatar_url is not None and not avatar_url.strip().lower().startswith(("http://", "https://")):
+                raise ValidationException("头像地址无效")
+            user.avatar_url = avatar_url.strip() if avatar_url else None
+        await session.commit()
+        return await self.get_profile_for_auth(session, auth)
 
     async def get_public_profile_by_search_id(self, session: AsyncSession, search_id: int) -> PublicUserProfile:
         result = await session.execute(select(User).where(User.search_id == search_id, User.status == "ACTIVE"))

@@ -3,7 +3,7 @@ import re
 import uuid
 from io import BytesIO
 from datetime import timezone
-from typing import List
+from typing import Any, Dict, List
 from zipfile import BadZipFile
 
 from sqlalchemy import delete, func, select
@@ -323,6 +323,39 @@ class KnowledgeService:
         rows = await db.execute(stmt)
         return [self._read_model(document, chunk_count=int(chunk_count or 0)) for document, chunk_count in rows.all()]
 
+    async def list_document_sources(
+        self,
+        db: AsyncSession,
+        *,
+        agent_id: uuid.UUID,
+        team_id: uuid.UUID,
+    ) -> List[Dict[str, Any]]:
+        """Return the complete document inventory without loading document bodies."""
+        stmt = (
+            select(
+                KnowledgeDocument.id,
+                KnowledgeDocument.title,
+                KnowledgeDocument.source_filename,
+                KnowledgeDocument.document_type,
+                KnowledgeDocument.status,
+                KnowledgeDocument.chunk_count,
+            )
+            .where(KnowledgeDocument.agent_id == agent_id, KnowledgeDocument.team_id == team_id)
+            .order_by(KnowledgeDocument.created_at.asc(), KnowledgeDocument.id.asc())
+        )
+        rows = await db.execute(stmt)
+        return [
+            {
+                "document_id": str(document_id),
+                "title": title or "",
+                "source_filename": source_filename or title or "未命名资料",
+                "document_type": document_type or "other",
+                "status": status or "ACTIVE",
+                "chunk_count": int(chunk_count or 0),
+            }
+            for document_id, title, source_filename, document_type, status, chunk_count in rows.all()
+        ]
+
     async def delete_document(
         self,
         db: AsyncSession,
@@ -356,6 +389,7 @@ class KnowledgeService:
         article_no: str | None = None,
         include_near_misses: bool = True,
         document_type: str | None = None,
+        max_chunks_per_document: int | None = None,
     ) -> List[KnowledgeSearchResult]:
         normalized_query = query.strip().lower()
         query_tokens = self._filter_query_tokens(self._tokenize(query))
@@ -367,43 +401,61 @@ class KnowledgeService:
         if document_type:
             conditions.append(KnowledgeDocument.document_type == document_type)
         stmt = (
-            select(KnowledgeChunk, KnowledgeDocument.document_type)
+            select(
+                KnowledgeChunk,
+                KnowledgeDocument.document_type,
+                KnowledgeDocument.title,
+                KnowledgeDocument.source_filename,
+            )
             .join(KnowledgeDocument, KnowledgeDocument.id == KnowledgeChunk.document_id)
             .where(*conditions)
         )
         rows = await db.execute(stmt)
         chunk_rows = rows.all()
-        chunks = [chunk for chunk, _document_type in chunk_rows]
-        document_types = {chunk.id: document_type or "other" for chunk, document_type in chunk_rows}
+        chunks = [chunk for chunk, _document_type, _document_title, _source_filename in chunk_rows]
+        document_metadata = {
+            chunk.id: (document_type or "other", document_title, source_filename)
+            for chunk, document_type, document_title, source_filename in chunk_rows
+        }
 
-        return [
-            KnowledgeSearchResult(
+        ranked_chunks = knowledge_retrieval_ranker.rank(
+            chunks=chunks,
+            query=normalized_query,
+            query_tokens=query_tokens,
+            retrieval_mode=retrieval_mode,
+            requested_article_no=requested_article_no,
+            include_near_misses=include_near_misses,
+            extract_article_no=self.extract_article_no,
+            token_weight=self._token_weight,
+        )
+        results: List[KnowledgeSearchResult] = []
+        chunks_per_document: Dict[uuid.UUID, int] = {}
+        for ranked in ranked_chunks:
+            chunk = ranked.chunk
+            if max_chunks_per_document is not None and chunks_per_document.get(chunk.document_id, 0) >= max_chunks_per_document:
+                continue
+            document_type, document_title, source_filename = document_metadata.get(chunk.id, ("other", None, None))
+            results.append(KnowledgeSearchResult(
                 document_id=chunk.document_id,
                 chunk_id=chunk.id,
                 title=chunk.title,
                 content=chunk.content,
                 score=ranked.score,
                 match_type=ranked.match_type,
-                document_type=document_types.get(chunk.id, "other"),
+                document_type=document_type,
+                document_title=document_title,
+                source_filename=source_filename,
                 article_no=chunk.article_no or self.extract_article_no(chunk.content),
                 article_label=chunk.article_label or self.extract_article_label(chunk.content),
                 section_path=chunk.section_path or [chunk.title, chunk.article_label or self.extract_article_label(chunk.content) or f"片段 {chunk.chunk_index + 1}"],
                 page_no=chunk.page_no,
                 citation_label=f"{chunk.title} / {chunk.article_label or self.extract_article_label(chunk.content) or f'片段 {chunk.chunk_index + 1}'}",
                 is_direct_evidence=ranked.is_direct_evidence,
-            )
-            for ranked in knowledge_retrieval_ranker.rank(
-                chunks=chunks,
-                query=normalized_query,
-                query_tokens=query_tokens,
-                retrieval_mode=retrieval_mode,
-                requested_article_no=requested_article_no,
-                include_near_misses=include_near_misses,
-                extract_article_no=self.extract_article_no,
-                token_weight=self._token_weight,
-            )[:limit]
-            for chunk in [ranked.chunk]
-        ]
+            ))
+            chunks_per_document[chunk.document_id] = chunks_per_document.get(chunk.document_id, 0) + 1
+            if len(results) >= limit:
+                break
+        return results
 
     async def build_context(
         self,

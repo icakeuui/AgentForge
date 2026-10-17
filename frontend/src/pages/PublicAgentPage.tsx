@@ -1,29 +1,37 @@
-import { Bot, Loader2, Send, TriangleAlert } from 'lucide-react'
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { useParams } from 'react-router-dom'
+import { ArrowLeft, Bot, Loader2, TriangleAlert } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
 
-import { Button } from '../components/ui/Button'
+import { PlatformShell } from '../components/navigation/PlatformShell'
+import { Badge } from '../components/ui/Badge'
+import { Card } from '../components/ui/Card'
+import { UnifiedChatComposer } from '../components/workspace/chat/UnifiedChatComposer'
+import { MessageAttachments, type MessageAttachment } from '../components/workspace/chat/MessageAttachments'
 import { RichContentRenderer } from '../components/workspace/rich-content/RichContentRenderer'
 import { normalizeApiError } from '../lib/api/error'
 import {
   publicAgentAdapter,
   type PublicAgentProfile,
   type PublicConversationMessage,
+  type PublicConversation,
 } from '../features/public-agent/publicAgent.adapter'
+import { publicAgentSummary } from '../features/public-agent/publicAgent.presentation'
 
 type PublicChatMessage = PublicConversationMessage & {
   id: string
   status?: 'PENDING' | 'SUCCEEDED' | 'FAILED'
+  attachments?: MessageAttachment[]
 }
 
 const TERMINAL_STATUSES = ['SUCCEEDED', 'FAILED', 'TERMINATED'] as const
 
-function createMessage(role: PublicChatMessage['role'], content: string, status?: PublicChatMessage['status']): PublicChatMessage {
+function createMessage(role: PublicChatMessage['role'], content: string, status?: PublicChatMessage['status'], attachments?: MessageAttachment[]): PublicChatMessage {
   return {
     id: `${role}:${Date.now()}:${Math.random().toString(16).slice(2)}`,
     role,
     content,
     status,
+    attachments,
   }
 }
 
@@ -49,16 +57,29 @@ export function PublicAgentPage() {
   const [input, setInput] = useState('')
   const [isLoadingProfile, setIsLoadingProfile] = useState(true)
   const [isSending, setIsSending] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const [selectedFiles, setSelectedFiles] = useState<Array<{ id: string; file: File }>>([])
+  const conversationRef = useRef<PublicConversation | null>(null)
+  const activeSlugRef = useRef(slug.trim())
   const [error, setError] = useState<string | null>(null)
 
   const normalizedSlug = useMemo(() => slug.trim(), [slug])
 
   useEffect(() => {
     let cancelled = false
-    setIsLoadingProfile(true)
-    setError(null)
-    setProfile(null)
-    setMessages([])
+    activeSlugRef.current = normalizedSlug
+    queueMicrotask(() => {
+      if (cancelled) return
+      setIsLoadingProfile(true)
+      setError(null)
+      setProfile(null)
+      setMessages([])
+      setInput('')
+      setSelectedFiles([])
+      setIsSending(false)
+      setIsUploading(false)
+      conversationRef.current = null
+    })
 
     publicAgentAdapter
       .fetchPublicProfile(normalizedSlug)
@@ -83,6 +104,7 @@ export function PublicAgentPage() {
   const pollExecution = async (executionId: string, assistantMessageId: string) => {
     for (let attempt = 0; attempt < 90; attempt += 1) {
       const replay = await publicAgentAdapter.fetchPublicExecution(normalizedSlug, executionId)
+      if (activeSlugRef.current !== normalizedSlug) return
       if (TERMINAL_STATUSES.includes(replay.status as (typeof TERMINAL_STATUSES)[number])) {
         const isSuccess = replay.status === 'SUCCEEDED'
         setMessages((prev) =>
@@ -110,115 +132,181 @@ export function PublicAgentPage() {
     )
   }
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const normalizedInput = input.trim()
+  const handleSubmit = async () => {
+    const normalizedInput = input.trim() || (selectedFiles.length > 0 ? '请阅读本次附件。' : '')
     if (!profile || normalizedInput.length === 0 || isSending) return
 
     const history = buildHistory(messages)
-    const userMessage = createMessage('user', normalizedInput, 'SUCCEEDED')
-    const assistantMessage = createMessage('assistant', '正在思考...', 'PENDING')
-    setMessages((prev) => [...prev, userMessage, assistantMessage])
-    setInput('')
     setIsSending(true)
     setError(null)
+    let assistantMessageId: string | null = null
 
     try {
-      const started = await publicAgentAdapter.startPublicExecution(normalizedSlug, normalizedInput, history)
+      let conversation = conversationRef.current
+      const attachmentIds: string[] = []
+      const messageAttachments: MessageAttachment[] = []
+      if (selectedFiles.length > 0) {
+        setIsUploading(true)
+        if (!conversation) {
+          conversation = await publicAgentAdapter.createConversation(normalizedSlug)
+          if (activeSlugRef.current !== normalizedSlug) return
+          conversationRef.current = conversation
+        }
+        for (const selected of selectedFiles) {
+          const uploaded = await publicAgentAdapter.uploadAttachment(normalizedSlug, conversation, selected.file)
+          if (activeSlugRef.current !== normalizedSlug) return
+          attachmentIds.push(uploaded.id)
+          messageAttachments.push({
+            id: uploaded.id,
+            name: selected.file.name,
+            mime_type: selected.file.type,
+            size: selected.file.size,
+            conversation_id: conversation.conversation_id,
+          })
+        }
+        setIsUploading(false)
+      }
+      const userMessage = createMessage('user', normalizedInput, 'SUCCEEDED', messageAttachments)
+      const assistantMessage = createMessage('assistant', '正在思考...', 'PENDING')
+      assistantMessageId = assistantMessage.id
+      setMessages((prev) => [...prev, userMessage, assistantMessage])
+      const started = await publicAgentAdapter.startPublicExecution(normalizedSlug, normalizedInput, history, conversation ?? undefined, attachmentIds)
+      if (activeSlugRef.current !== normalizedSlug) return
+      setInput('')
+      setSelectedFiles([])
       await pollExecution(started.execution_id, assistantMessage.id)
     } catch (err) {
+      if (activeSlugRef.current !== normalizedSlug) return
       const message = normalizeApiError(err).message
-      setMessages((prev) =>
-        prev.map((item) => (item.id === assistantMessage.id ? { ...item, content: message, status: 'FAILED' } : item)),
-      )
+      if (assistantMessageId) {
+        setMessages((prev) => prev.map((item) => item.id === assistantMessageId ? { ...item, content: message, status: 'FAILED' } : item))
+      }
       setError(message)
     } finally {
-      setIsSending(false)
+      if (activeSlugRef.current === normalizedSlug) {
+        setIsUploading(false)
+        setIsSending(false)
+      }
     }
   }
 
   if (isLoadingProfile) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-bg px-4 text-text-sub">
-        <div className="flex items-center gap-2 text-sm">
-          <Loader2 size={16} className="animate-spin" />
-          正在打开智能体链接...
-        </div>
-      </main>
+      <PlatformShell>
+        <main className="flex min-h-screen items-center justify-center bg-bg/70 px-4 text-text-sub">
+          <div className="flex items-center gap-2 rounded-token-lg border border-border bg-surface px-5 py-4 text-sm shadow-token-sm">
+            <Loader2 size={16} className="animate-spin text-primary" />
+            正在打开智能体链接...
+          </div>
+        </main>
+      </PlatformShell>
     )
   }
 
   if (profile === null) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-bg px-4">
-        <div className="w-full max-w-md rounded-token-md border border-border bg-surface p-5 text-center shadow-token-sm">
-          <TriangleAlert className="mx-auto text-red-500" size={26} />
-          <h1 className="mt-3 text-base font-semibold text-text-main">链接不可用</h1>
-          <p className="mt-2 text-sm leading-relaxed text-text-sub">{error ?? '这个智能体链接不存在或已被停用。'}</p>
-        </div>
-      </main>
+      <PlatformShell>
+        <main className="flex min-h-screen items-center justify-center bg-bg/70 px-4">
+          <Card className="w-full max-w-md p-6 text-center">
+            <TriangleAlert className="mx-auto text-error" size={26} />
+            <h1 className="mt-3 text-base font-semibold text-text-main">链接不可用</h1>
+            <p className="mt-2 text-sm leading-relaxed text-text-sub">{error ?? '这个智能体链接不存在或已被停用。'}</p>
+            <Link to="/square" className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
+              <ArrowLeft size={15} /> 返回智能体广场
+            </Link>
+          </Card>
+        </main>
+      </PlatformShell>
     )
   }
 
   return (
-    <main className="min-h-screen bg-bg text-text-main">
-      <div className="mx-auto flex min-h-screen w-full max-w-4xl flex-col px-4 py-5 sm:px-6">
-        <header className="border-b border-border pb-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-token-md bg-primary/10 text-primary">
-              {profile.avatar_url ? <img src={profile.avatar_url} alt="" className="h-11 w-11 rounded-token-md object-cover" /> : <Bot size={20} />}
-            </span>
-            <div className="min-w-0">
-              <h1 className="truncate text-lg font-semibold">{profile.title}</h1>
-              <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-text-sub">{profile.description}</p>
-            </div>
-          </div>
-        </header>
-
-        <section className="flex-1 overflow-y-auto py-5">
-          <div className="space-y-3">
-            {messages.map((message) => (
-              <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div
-                  className={`max-w-[84%] rounded-token-md px-4 py-3 text-sm leading-relaxed shadow-token-sm ${
-                    message.role === 'user'
-                      ? 'bg-primary text-white'
-                      : message.status === 'FAILED'
-                        ? 'border border-red-200 bg-red-50 text-red-700'
-                        : 'border border-border bg-surface text-text-main'
-                  }`}
-                >
-                  {message.status === 'PENDING' ? (
-                    <span className="inline-flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin" />
-                      {message.content}
-                    </span>
-                  ) : (
-                    renderPublicMessageContent(message)
-                  )}
+    <PlatformShell>
+      <main className="min-h-screen bg-bg/70 text-text-main">
+        <div className="mx-auto grid min-h-screen w-full max-w-[1440px] gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] lg:gap-6 lg:px-8 lg:py-7">
+          <aside className="flex min-w-0 flex-col gap-4">
+            <Link to="/square" className="inline-flex w-fit items-center gap-2 rounded-token-md px-2 py-1.5 text-sm font-medium text-text-sub transition-colors hover:bg-surface hover:text-primary">
+              <ArrowLeft size={15} /> 返回智能体广场
+            </Link>
+            <Card className="p-5 sm:p-6">
+              <div className="flex items-start gap-3">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-token-md bg-primary/10 text-primary ring-1 ring-primary/10">
+                  {profile.avatar_url ? <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" /> : <Bot size={21} />}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="text-lg font-semibold tracking-tight text-text-main">{profile.title}</h1>
+                    <Badge variant="success">公开试用</Badge>
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-text-sub">{publicAgentSummary(profile)}</p>
                 </div>
               </div>
-            ))}
-          </div>
-        </section>
+            </Card>
+          </aside>
 
-        <form onSubmit={handleSubmit} className="border-t border-border pt-4">
-          {error ? <p className="mb-2 text-xs text-red-500">{error}</p> : null}
-          <div className="flex items-end gap-2 rounded-token-md border border-border bg-surface p-2 shadow-token-sm">
-            <textarea
-              className="min-h-10 flex-1 resize-none rounded-token-md bg-transparent px-2 py-2 text-sm leading-relaxed text-text-main placeholder:text-text-muted focus-visible:outline-none"
-              placeholder="输入你想问的问题..."
-              value={input}
-              rows={1}
-              onChange={(event) => setInput(event.target.value)}
-              disabled={isSending}
-            />
-            <Button type="submit" size="icon" aria-label="发送" title="发送" disabled={isSending || input.trim().length === 0}>
-              {isSending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </main>
+          <section className="flex min-h-[68vh] min-w-0 flex-col overflow-hidden rounded-token-lg border border-border/80 bg-surface shadow-token-sm lg:min-h-[calc(100vh-3.5rem)]">
+            <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border/80 px-4 py-4 sm:px-5">
+              <div>
+                <h2 className="text-base font-semibold tracking-tight text-text-main">对话试用</h2>
+                <p className="mt-0.5 text-xs text-text-muted">向 {profile.title} 提问，体验公开智能体。</p>
+              </div>
+              <Badge variant={isSending ? 'info' : 'neutral'}>{isSending ? '正在回复' : '等待提问'}</Badge>
+            </header>
+
+            <div className="flex-1 overflow-y-auto bg-bg/45 p-4 sm:p-6">
+              {messages.length === 0 ? (
+                <div className="flex h-full min-h-40 items-center justify-center rounded-token-lg border border-dashed border-border bg-surface/80 px-5 text-center text-sm text-text-muted">
+                  输入一个问题，开始体验这个智能体。
+                </div>
+              ) : (
+                <div className="mx-auto max-w-3xl space-y-4">
+                  {messages.map((message) => (
+                    <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div
+                        className={`max-w-[88%] rounded-token-lg px-4 py-3 text-sm leading-relaxed shadow-token-sm sm:max-w-[82%] ${
+                          message.role === 'user'
+                            ? 'bg-primary text-white'
+                            : message.status === 'FAILED'
+                              ? 'border border-error/20 bg-error-soft text-error'
+                              : 'border border-border/80 bg-surface text-text-main'
+                        }`}
+                      >
+                        {message.status === 'PENDING' ? (
+                          <span className="inline-flex items-center gap-2">
+                            <Loader2 size={14} className="animate-spin" />
+                            {message.content}
+                          </span>
+                        ) : (
+                          renderPublicMessageContent(message)
+                        )}
+                        {message.role === 'user' && <MessageAttachments attachments={message.attachments} />}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="shrink-0 border-t border-border/80 bg-surface p-4 sm:p-5">
+              {error ? <p className="mb-2 text-xs text-error" role="alert">{error}</p> : null}
+              <div className="mx-auto max-w-3xl">
+                <UnifiedChatComposer
+                  value={input}
+                  onChange={setInput}
+                  onSend={() => void handleSubmit()}
+                  disabled={isSending}
+                  isRunning={isSending}
+                  isUploading={isUploading}
+                  placeholder="输入你想问的问题..."
+                  attachments={selectedFiles.map(({ id, file }) => ({ id, name: file.name }))}
+                  onSelectFiles={(files) => setSelectedFiles((current) => [...current, ...files.map((file) => ({ id: crypto.randomUUID(), file }))])}
+                  onRemoveAttachment={(id) => setSelectedFiles((current) => current.filter((entry) => entry.id !== id))}
+                />
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </PlatformShell>
   )
 }

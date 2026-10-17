@@ -8,6 +8,10 @@ from backend.core.config import settings
 from backend.core.rate_limiter import LimitStatus
 from backend.services.competition_manager_service import competition_manager_service
 from backend.services.execution_engine import execution_engine
+from backend.services.public_conversation_attachment_service import (
+    LocalAttachmentStorage,
+    public_conversation_attachment_service,
+)
 
 
 TEST_TEAM_ID = "00000000-0000-0000-0000-000000000001"
@@ -148,3 +152,47 @@ def test_public_execute_starts_agent_execution_for_active_publication(monkeypatc
     replay = replay_response.json()["data"]
     assert replay["execution_id"] == data["execution_id"]
     assert replay["agent_id"] == agent_id
+
+
+def test_public_attachment_reaches_execution_without_entering_agent_knowledge(monkeypatch, client: TestClient, tmp_path):
+    monkeypatch.setattr(public_conversation_attachment_service, "storage", LocalAttachmentStorage(tmp_path))
+    monkeypatch.setattr(competition_manager_service, "check_team_rate_limit", AsyncMock(return_value=LimitStatus.ALLOWED))
+    monkeypatch.setattr(competition_manager_service, "check_team_token_limit", AsyncMock(return_value=LimitStatus.ALLOWED))
+    run_mock = AsyncMock(return_value=None)
+    monkeypatch.setattr(execution_engine, "run", run_mock)
+
+    agent_id = _create_agent(client, name="Attachment Public Agent")
+    client.post(
+        f"/agents/{agent_id}/publish",
+        json={"slug": "attachment-public-agent"},
+        headers=_auth_headers(),
+    )
+    first = client.post("/public/agents/attachment-public-agent/conversations").json()["data"]
+    second = client.post("/public/agents/attachment-public-agent/conversations").json()["data"]
+    upload_url = f"/public/agents/attachment-public-agent/conversations/{first['conversation_id']}/attachments"
+    upload = client.post(
+        upload_url,
+        files={"file": ("private.txt", "只属于访客甲的内容".encode(), "text/plain")},
+        headers={"X-Public-Conversation-Token": first["conversation_token"]},
+    )
+    assert upload.status_code == 200
+    attachment_id = upload.json()["data"]["id"]
+
+    denied = client.post(
+        "/public/agents/attachment-public-agent/execute",
+        json={"input": "总结附件", "conversation_id": first["conversation_id"], "attachment_ids": [attachment_id]},
+        headers={"X-Public-Conversation-Token": second["conversation_token"]},
+    )
+    assert denied.status_code == 422
+    run_mock.assert_not_awaited()
+
+    response = client.post(
+        "/public/agents/attachment-public-agent/execute",
+        json={"input": "总结附件", "conversation_id": first["conversation_id"], "attachment_ids": [attachment_id]},
+        headers={"X-Public-Conversation-Token": first["conversation_token"]},
+    )
+    assert response.status_code == 200
+    assert "只属于访客甲的内容" in run_mock.await_args.kwargs["attachment_context"]
+    assert run_mock.await_args.kwargs["user_input"] == "总结附件"
+    knowledge = client.get(f"/agents/{agent_id}/knowledge", headers=_auth_headers()).json()["data"]
+    assert knowledge == []

@@ -405,6 +405,7 @@ function syncConversationMessages(messages: ConversationMessage[], data: Executi
     content: assistantContent,
     execution_id: data.execution_id,
     status: data.status,
+    termination_reason: data.termination_reason,
     source: 'chat',
     knowledge_badge: knowledgeBadgeFromSnapshot(data),
   }

@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 
 import { cn } from '../../../lib/cn'
 import type { ExecutionStatus } from '../../../features/execution/execution.types'
+import { MessageAttachments, type MessageAttachment } from './MessageAttachments'
 
 interface MessageBubbleRichProps {
   role: 'assistant' | 'user'
@@ -14,17 +15,27 @@ interface MessageBubbleRichProps {
   tone?: 'normal' | 'muted'
   badge?: string | null
   status?: ExecutionStatus
+  terminationReason?: string | null
   onRegenerate?: () => void
   showActions?: boolean
   showStatus?: boolean
+  attachments?: MessageAttachment[]
 }
 
 type FeedbackState = 'up' | 'down' | null
 
-function statusCopy(status?: ExecutionStatus): { label: string; icon: ReactNode; tone: string } {
+function statusCopy(status?: ExecutionStatus, terminationReason?: string | null): { label: string; icon: ReactNode; tone: string } {
   if (status === 'FAILED' || status === 'TERMINATED') {
     return {
-      label: status === 'TERMINATED' ? '任务中断' : '任务失败',
+      label: status === 'FAILED'
+        ? '任务失败'
+        : terminationReason === 'OUTPUT_LIMIT_REACHED' || terminationReason === 'MODEL_OUTPUT_TRUNCATED'
+          ? '达到输出上限'
+          : terminationReason === 'MAX_STEPS_REACHED'
+            ? '达到 Agent 步数上限'
+            : terminationReason === 'USER_STOPPED'
+              ? '用户已取消'
+              : '任务已终止',
       icon: <CheckCircle2 size={14} />,
       tone: 'text-error',
     }
@@ -52,16 +63,18 @@ export function MessageBubbleRich({
   tone = 'normal',
   badge = null,
   status,
+  terminationReason = null,
   onRegenerate,
   showActions = true,
   showStatus = true,
+  attachments,
 }: MessageBubbleRichProps) {
   const isAssistant = role === 'assistant'
   const isMuted = tone === 'muted'
   const canCopy = contentText !== undefined && contentText.trim().length > 0
   const [feedback, setFeedback] = useState<FeedbackState>(null)
   const [copied, setCopied] = useState(false)
-  const assistantStatus = useMemo(() => statusCopy(status), [status])
+  const assistantStatus = useMemo(() => statusCopy(status, terminationReason), [status, terminationReason])
 
   const handleCopy = async () => {
     if (!canCopy || typeof navigator === 'undefined') {
@@ -97,8 +110,8 @@ export function MessageBubbleRich({
             isMuted
               ? 'border border-border bg-bg-soft/70 text-text-muted'
               : isAssistant
-                ? 'bg-surface text-text-main shadow-token-sm border border-border'
-                : 'bg-bg-soft text-text-main border border-border/50',
+                ? 'bg-surface text-text-main shadow-token-sm border border-border/80'
+                : 'bg-primary/8 text-text-main border border-primary/10',
           )}
         >
           {isAssistant && badge ? (
@@ -107,6 +120,7 @@ export function MessageBubbleRich({
             </div>
           ) : null}
           <div className="leading-relaxed">{content}</div>
+          {!isAssistant && <MessageAttachments attachments={attachments} />}
         </div>
 
         {!isAssistant ? (

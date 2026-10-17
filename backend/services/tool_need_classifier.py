@@ -47,6 +47,10 @@ class ToolNeedClassifier:
     ]
     SMALLTALK = {"你好", "您好", "hi", "hello", "谢谢", "thanks", "在吗"}
     QUESTION_MARKERS = ("?", "？", "什么", "如何", "怎么", "吗")
+    DOCUMENT_INVENTORY_PATTERNS = (
+        r"(?:知识库|资料库).{0,16}(?:有哪些|都有什么|有什么|全部|完整).{0,8}(?:文件|文档|资料)",
+        r"(?:列出|列一下|查看).{0,12}(?:知识库|资料库|文件|文档).{0,8}(?:清单|列表)?",
+    )
 
     def classify(
         self,
@@ -57,6 +61,17 @@ class ToolNeedClassifier:
         text = user_input.strip()
         lowered = text.lower()
         matched_rules: List[str] = []
+
+        if any(re.search(pattern, text) for pattern in self.DOCUMENT_INVENTORY_PATTERNS):
+            return IntentClassificationResult(
+                intent_type="KB_REQUIRED",
+                query_subtype="document_inventory",
+                confidence=0.98,
+                matched_rules=["structured_knowledge_document_inventory"],
+                requires_citation=True,
+                allow_direct_answer=False,
+                requires_user_confirmation=False,
+            )
 
         exact_clause = False
         for pattern in self.KB_REQUIRED_PATTERNS:

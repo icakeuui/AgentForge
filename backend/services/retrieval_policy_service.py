@@ -7,6 +7,8 @@ class RetrievalPolicyService:
     VERSION = "retrieval-policy-v1"
 
     def resolve(self, classification: IntentClassificationResult) -> RetrievalPolicy:
+        if classification.query_subtype == "document_inventory":
+            return RetrievalPolicy(retrieval_mode="document_inventory", limit=0, min_score=0.0, required=True)
         if classification.intent_type == "DIRECT_CHAT":
             return RetrievalPolicy(retrieval_mode="none", limit=0, min_score=0.0, required=False)
         if classification.query_subtype == "exact_clause":

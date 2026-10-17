@@ -267,13 +267,13 @@ export function WorkspaceRail() {
   return (
     <aside
       style={{ width: leftPanelWidth }}
-      className="flex h-full shrink-0 flex-col border-r border-border bg-surface transition-all duration-300"
+      className="flex h-full min-w-0 shrink-0 flex-col border-r border-border/80 bg-surface/95 transition-[width] duration-200"
     >
-      <div className="shrink-0 border-b border-border px-4 py-4">
-        <div className="mb-3 flex items-start justify-between gap-3">
+      <div className="shrink-0 border-b border-border/80 px-4 py-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold text-text-main">智能体仓库</h2>
-            <p className="mt-0.5 truncate text-xs text-text-muted">智能体历史管理</p>
+            <h2 className="truncate text-base font-semibold tracking-tight text-text-main">我的智能体</h2>
+            <p className="mt-0.5 truncate text-xs text-text-muted">智能体仓库 · 历史管理</p>
           </div>
           <Button
             type="button"

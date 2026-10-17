@@ -1,4 +1,4 @@
-import { ArrowLeft, Copy, KeyRound, Loader2, LogIn, Mail, Plus, UserCircle } from 'lucide-react'
+import { ArrowLeft, Camera, Check, Copy, KeyRound, Loader2, LogIn, Mail, Plus, UserCircle, X } from 'lucide-react'
 import { type ChangeEvent, type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 
@@ -572,66 +572,169 @@ export function ProfilePage() {
   const navigate = useNavigate()
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)
+  const updateProfile = useAuthStore((state) => state.updateProfile)
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [displayName, setDisplayName] = useState('')
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [savingName, setSavingName] = useState(false)
+  const [savingAvatar, setSavingAvatar] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    setDisplayName(user?.display_name ?? '')
+  }, [user?.display_name])
+
+  useEffect(() => () => {
+    if (avatarPreview?.startsWith('blob:')) URL.revokeObjectURL(avatarPreview)
+  }, [avatarPreview])
 
   if (!user) return <Navigate to="/login" replace />
 
-  const handleBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1)
+  const handleAvatarSelection = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0]
+    event.currentTarget.value = ''
+    if (!file) return
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      notify.error('请选择 PNG 或 JPG/JPEG 图片')
       return
     }
-    navigate('/', { replace: true })
+    if (file.size > maxAvatarUploadSize) {
+      notify.error('头像文件不能超过 5MB')
+      return
+    }
+    setAvatarFile(file)
+    setAvatarPreview(URL.createObjectURL(file))
+  }
+
+  const cancelAvatarChange = () => {
+    setAvatarFile(null)
+    setAvatarPreview(null)
+  }
+
+  const saveAvatar = async () => {
+    if (!avatarFile) return
+    setSavingAvatar(true)
+    try {
+      const uploaded = await authAdapter.uploadAvatar(avatarFile)
+      await updateProfile({ avatar_url: uploaded.avatar_url })
+      setAvatarFile(null)
+      setAvatarPreview(null)
+      notify.success('头像已更新')
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '头像保存失败，请稍后重试')
+    } finally {
+      setSavingAvatar(false)
+    }
+  }
+
+  const saveDisplayName = async () => {
+    const normalizedName = displayName.trim()
+    if (!normalizedName) {
+      notify.error('昵称不能为空')
+      return
+    }
+    if (normalizedName.length > 80) {
+      notify.error('昵称不能超过 80 个字符')
+      return
+    }
+    setSavingName(true)
+    try {
+      await updateProfile({ display_name: normalizedName })
+      setDisplayName(normalizedName)
+      setIsEditingName(false)
+      notify.success('昵称已更新')
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '昵称保存失败，请稍后重试')
+    } finally {
+      setSavingName(false)
+    }
   }
 
   return (
-    <div className="mx-auto flex h-full max-w-3xl flex-col gap-5 overflow-auto p-8">
-      <div className="flex items-start justify-between gap-4">
+    <div className="mx-auto flex min-h-screen w-full max-w-4xl flex-col gap-6 overflow-auto px-5 py-8 md:px-10 md:py-12">
+      <div>
+        <div className="text-sm font-medium text-primary">账号设置</div>
         <div>
-          <h1 className="text-xl font-semibold text-text-main">个人资料</h1>
-          <p className="mt-1 text-sm text-text-muted">公开身份和账号状态</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-text-main">个人资料</h1>
+          <p className="mt-2 text-sm text-text-muted">管理你的公开资料与账号信息</p>
         </div>
-        <Button type="button" variant="ghost" leftIcon={<ArrowLeft size={16} />} onClick={handleBack}>
-          返回
-        </Button>
       </div>
 
-      <section className="rounded-token-lg border border-border bg-surface p-5 shadow-token-sm">
-        <div className="flex items-center gap-4">
-          <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-border bg-bg-soft text-lg font-semibold">
-            {user.avatar_url ? <img src={user.avatar_url} alt={`${user.display_name} 头像`} className="h-full w-full object-cover" /> : <UserCircle size={26} />}
+      <section className="rounded-token-xl border border-border/80 bg-surface p-5 shadow-token-sm md:p-8">
+        <div className="flex flex-col gap-6 border-b border-border/70 pb-7 sm:flex-row sm:items-center">
+          <div className="relative h-20 w-20 shrink-0">
+            <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border border-border bg-bg-soft text-lg font-semibold text-text-muted">
+              {avatarPreview || user.avatar_url
+                ? <img src={avatarPreview ?? user.avatar_url ?? ''} alt={`${user.display_name} 头像`} className="h-full w-full object-cover" />
+                : <UserCircle size={34} />}
+            </div>
+            <button type="button" onClick={() => avatarInputRef.current?.click()} className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-surface bg-primary text-white shadow-token-sm transition-colors hover:bg-primary-hover" aria-label="更换头像">
+              <Camera size={15} />
+            </button>
           </div>
-          <div className="min-w-0">
-            <div className="truncate text-base font-semibold">{user.display_name}</div>
-            <div className="text-sm text-text-muted">{user.email}</div>
+          <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={handleAvatarSelection} />
+          <div className="min-w-0 flex-1">
+            <div className="text-base font-semibold text-text-main">头像</div>
+            <p className="mt-1 text-sm text-text-muted">支持 PNG、JPG 或 JPEG，文件大小不超过 5MB。</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" size="sm" leftIcon={<Camera size={15} />} onClick={() => avatarInputRef.current?.click()}>
+                更换头像
+              </Button>
+              {avatarFile && <>
+                <Button type="button" size="sm" leftIcon={<Check size={15} />} disabled={savingAvatar} onClick={() => void saveAvatar()}>
+                  {savingAvatar ? '保存中...' : '保存头像'}
+                </Button>
+                <Button type="button" variant="ghost" size="sm" leftIcon={<X size={15} />} disabled={savingAvatar} onClick={cancelAvatarChange}>取消</Button>
+              </>}
+            </div>
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-token-md border border-border bg-bg-soft p-3">
-            <div className="text-xs text-text-muted">Search ID</div>
-            <div className="mt-1 flex items-center justify-between gap-3">
-              <span className="font-mono text-sm">{user.search_id}</span>
-              <Button type="button" size="icon" variant="ghost" title="复制 search_id" onClick={() => { void navigator.clipboard.writeText(String(user.search_id)); notify.success('Search ID 已复制') }}>
+        <div className="divide-y divide-border/70">
+          <div className="grid gap-3 py-5 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-center">
+            <div className="text-sm font-medium text-text-sub">昵称</div>
+            {isEditingName ? <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Input aria-label="昵称" value={displayName} maxLength={80} onChange={(event) => setDisplayName(event.target.value)} />
+              <div className="flex shrink-0 gap-2">
+                <Button type="button" size="sm" leftIcon={<Check size={15} />} disabled={savingName} onClick={() => void saveDisplayName()}>{savingName ? '保存中...' : '保存'}</Button>
+                <Button type="button" size="sm" variant="secondary" leftIcon={<X size={15} />} disabled={savingName} onClick={() => { setDisplayName(user.display_name); setIsEditingName(false) }}>取消</Button>
+              </div>
+            </div> : <div className="flex items-center justify-between gap-4">
+              <span className="truncate text-sm text-text-main">{user.display_name}</span>
+              <Button type="button" variant="secondary" size="sm" onClick={() => setIsEditingName(true)}>编辑</Button>
+            </div>}
+          </div>
+          <div className="grid gap-2 py-5 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-center">
+            <div className="text-sm font-medium text-text-sub">邮箱</div>
+            <div className="text-sm text-text-muted">{user.email}</div>
+          </div>
+          <div className="grid gap-2 py-5 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-center">
+            <div className="text-sm font-medium text-text-sub">Search ID</div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-mono text-sm text-text-muted">{user.search_id}</span>
+              <Button type="button" size="icon" variant="ghost" title="复制 Search ID" onClick={() => { void navigator.clipboard.writeText(String(user.search_id)); notify.success('Search ID 已复制') }}>
                 <Copy size={16} />
               </Button>
             </div>
           </div>
-          <div className="rounded-token-md border border-border bg-bg-soft p-3">
-            <div className="text-xs text-text-muted">Team</div>
-            <div className="mt-1 truncate font-mono text-sm">{user.team_id}</div>
+          <div className="grid gap-2 py-5 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-center">
+            <div className="text-sm font-medium text-text-sub">Team ID</div>
+            <div className="truncate font-mono text-sm text-text-muted">{user.team_id ?? '—'}</div>
           </div>
         </div>
 
-        <Button
-          type="button"
-          variant="secondary"
-          className="mt-5"
-          onClick={() => {
-            void logout().then(() => navigate('/login', { replace: true }))
-          }}
-        >
-          退出登录
-        </Button>
+        <div className="mt-2 border-t border-border/70 pt-6">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              void logout().then(() => navigate('/login', { replace: true }))
+            }}
+          >
+            退出登录
+          </Button>
+        </div>
       </section>
     </div>
   )

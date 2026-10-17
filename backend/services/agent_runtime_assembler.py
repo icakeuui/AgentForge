@@ -43,8 +43,8 @@ class AgentRuntimeAssembler:
         has_explicit_tool_config = "tools" in agent_config
         capability_flags = agent_config.get("capability_flags") if isinstance(agent_config.get("capability_flags"), dict) else {}
         supports_tools = not bool(capability_flags.get("tools_disabled", False))
-        max_steps = int((agent_config.get("constraints") or {}).get("max_steps", self.default_max_steps))
-
+        constraints = agent_config.get("constraints") if isinstance(agent_config.get("constraints"), dict) else {}
+        max_steps = int(constraints.get("max_steps", self.default_max_steps))
         resolution_source = "bindings"
         binding_drift: Dict[str, List[str]] = {}
         unresolved_tools: List[str] = []

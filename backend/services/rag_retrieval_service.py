@@ -22,6 +22,7 @@ class RAGRetrievalService:
         agent_config: dict[str, Any],
         query: str,
         limit: int = 5,
+        max_chunks_per_document: int | None = None,
     ) -> list[KnowledgeSearchResult]:
         embedding_config = agent_config.get("embedding") if isinstance(agent_config, dict) else None
         if not isinstance(embedding_config, dict):
@@ -33,15 +34,16 @@ class RAGRetrievalService:
             raise ValueError("Embedding provider returned an empty query vector")
 
         vector_store = QdrantVectorStore()
+        candidate_limit = min(max(limit * 4, limit), 40) if max_chunks_per_document is not None else limit
         matches = await vector_store.search(
             query_vector,
             agent_id=str(agent_id),
-            limit=limit,
+            limit=candidate_limit,
         )
         if not matches:
             return []
 
-        scored_chunks: list[tuple[KnowledgeChunk, str, float]] = []
+        scored_chunks: list[tuple[KnowledgeChunk, str, str | None, str | None, float]] = []
         chunk_ids: list[uuid.UUID] = []
         score_by_id: dict[uuid.UUID, float] = {}
         for match in matches:
@@ -58,7 +60,12 @@ class RAGRetrievalService:
             return []
 
         rows = await db.execute(
-            select(KnowledgeChunk, KnowledgeDocument.document_type)
+            select(
+                KnowledgeChunk,
+                KnowledgeDocument.document_type,
+                KnowledgeDocument.title,
+                KnowledgeDocument.source_filename,
+            )
             .join(KnowledgeDocument, KnowledgeDocument.id == KnowledgeChunk.document_id)
             .where(
                 KnowledgeChunk.id.in_(chunk_ids),
@@ -68,18 +75,27 @@ class RAGRetrievalService:
                 KnowledgeDocument.team_id == team_id,
             )
         )
-        chunk_rows = {chunk.id: (chunk, document_type or "other") for chunk, document_type in rows.all()}
+        chunk_rows = {
+            chunk.id: (chunk, document_type or "other", document_title, source_filename)
+            for chunk, document_type, document_title, source_filename in rows.all()
+        }
         for chunk_id in chunk_ids:
             row = chunk_rows.get(chunk_id)
             if row is not None:
-                scored_chunks.append((row[0], row[1], score_by_id[chunk_id]))
+                scored_chunks.append((row[0], row[1], row[2], row[3], score_by_id[chunk_id]))
 
-        scored_chunks.sort(key=lambda item: item[2], reverse=True)
-        return [
-            KnowledgeSearchResult(
+        scored_chunks.sort(key=lambda item: item[4], reverse=True)
+        results: list[KnowledgeSearchResult] = []
+        per_document: dict[uuid.UUID, int] = {}
+        for chunk, document_type, document_title, source_filename, score in scored_chunks:
+            if max_chunks_per_document is not None and per_document.get(chunk.document_id, 0) >= max_chunks_per_document:
+                continue
+            results.append(KnowledgeSearchResult(
                 document_id=chunk.document_id,
                 chunk_id=chunk.id,
                 title=chunk.title,
+                document_title=document_title,
+                source_filename=source_filename,
                 content=chunk.content,
                 score=score,
                 match_type="vector",
@@ -90,9 +106,11 @@ class RAGRetrievalService:
                 page_no=chunk.page_no,
                 citation_label=f"{chunk.title} / {chunk.article_label or f'片段 {chunk.chunk_index + 1}'}",
                 is_direct_evidence=False,
-            )
-            for chunk, document_type, score in scored_chunks[:limit]
-        ]
+            ))
+            per_document[chunk.document_id] = per_document.get(chunk.document_id, 0) + 1
+            if len(results) >= limit:
+                break
+        return results
 
 
 rag_retrieval_service = RAGRetrievalService()

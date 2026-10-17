@@ -30,10 +30,33 @@
       background-image 280ms ease;
   }
 
+  ::selection {
+    background: rgba(36, 99, 235, 0.16);
+  }
+
   code,
   pre,
   kbd,
   samp {
     font-family: var(--font-mono);
+  }
+}
+
+.platform-nav-scroll {
+  scrollbar-width: none;
+}
+
+.platform-nav-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

@@ -17,9 +17,9 @@ export function SessionListItem({ title, subtitle, icon, active, onClick }: Sess
       type="button"
       onClick={onClick}
       className={cn(
-        'group flex w-full items-start gap-3 rounded-token-md px-3 py-2 text-left transition-colors',
+        'group relative flex w-full items-start gap-2.5 rounded-token-md px-3 py-2 text-left transition-colors',
         active
-          ? 'bg-bg-soft text-text-main shadow-token-sm ring-1 ring-border'
+          ? 'bg-primary/8 text-text-main shadow-token-sm ring-1 ring-primary/15 before:absolute before:bottom-2 before:left-0 before:top-2 before:w-0.5 before:rounded-full before:bg-primary'
           : 'text-text-sub hover:bg-bg-soft hover:text-text-main',
       )}
     >

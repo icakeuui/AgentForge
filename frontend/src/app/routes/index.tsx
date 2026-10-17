@@ -6,6 +6,12 @@ import {
   AgentSquarePage,
   ForgotPasswordPage,
   HomePage,
+  KnowledgeQuizCasePage,
+  LearningCenterPage,
+  LearningCoursePage,
+  LearningReaderPage,
+  PlatformGuidePage,
+  PlatformGuideTopicPage,
   LoginPage,
   LogsPage,
   MarketplacePage,
@@ -17,6 +23,7 @@ import {
   RunsPage,
 } from './lazyRoutes'
 import { ProtectedLayout, ProtectedRoute } from '../../features/auth/AuthGate'
+import { PlatformShell } from '../../components/navigation/PlatformShell'
 
 function routeElement(element: ReactNode) {
   return (
@@ -52,6 +59,30 @@ export const router = createBrowserRouter([
     element: routeElement(<AgentSquarePage />),
   },
   {
+    path: '/learn',
+    element: routeElement(<LearningCenterPage />),
+  },
+  {
+    path: '/learn/cases/knowledge-quiz',
+    element: routeElement(<KnowledgeQuizCasePage />),
+  },
+  {
+    path: '/learn/guide',
+    element: routeElement(<PlatformGuidePage />),
+  },
+  {
+    path: '/learn/guide/:slug',
+    element: routeElement(<PlatformGuideTopicPage />),
+  },
+  {
+    path: '/learn/course/:courseId',
+    element: routeElement(<LearningCoursePage />),
+  },
+  {
+    path: '/learn/read',
+    element: routeElement(<LearningReaderPage />),
+  },
+  {
     path: '/',
     element: routeElement(<HomePage />),
   },
@@ -80,16 +111,23 @@ export const router = createBrowserRouter([
       { path: 'runs', element: routeElement(<RunsPage />) },
       { path: 'marketplace', element: routeElement(<MarketplacePage />) },
       { path: 'logs', element: routeElement(<LogsPage />) },
-      { path: 'profile', element: routeElement(<ProfilePage />) },
       { path: 'settings', element: <Navigate to="/develop/profile" replace /> },
       { path: '*', element: routeElement(<NotFoundPage />) },
     ],
   },
   {
+    path: '/develop/profile',
+    element: routeElement(
+      <ProtectedRoute>
+        <PlatformShell><ProfilePage /></PlatformShell>
+      </ProtectedRoute>,
+    ),
+  },
+  {
     path: '/profile',
     element: routeElement(
       <ProtectedRoute>
-        <ProfilePage />
+        <PlatformShell><ProfilePage /></PlatformShell>
       </ProtectedRoute>,
     ),
   },

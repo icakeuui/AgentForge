@@ -23,7 +23,16 @@ const STATUS_LABEL: Record<ExecutionStatus, string> = {
   RUNNING: '执行中',
   SUCCEEDED: '已完成',
   FAILED: '失败',
-  TERMINATED: '已中断',
+  TERMINATED: '已终止',
+}
+
+function executionStatusLabel(status: ExecutionStatus, reason: string | null): string {
+  if (status === 'TERMINATED') {
+    if (reason === 'OUTPUT_LIMIT_REACHED' || reason === 'MODEL_OUTPUT_TRUNCATED') return '达到输出上限'
+    if (reason === 'MAX_STEPS_REACHED') return '达到步数上限'
+    if (reason === 'USER_STOPPED') return '用户已取消'
+  }
+  return STATUS_LABEL[status]
 }
 
 function liveAssistantContent(status: ExecutionStatus, finalAnswer: string | null, errorMessage: string | null, terminationReason: string | null): string | null {
@@ -198,6 +207,9 @@ function AssistantProcessPanel({ messages, status, compact }: { messages: Conver
 export function CopilotPanel() {
   const rightPanelWidth = useUiShellStore((state) => state.rightPanelWidth)
   const leftPanelWidth = useUiShellStore((state) => state.leftPanelWidth)
+  const platformSidebarWidth = typeof document === 'undefined'
+    ? 0
+    : document.querySelector<HTMLElement>('[data-platform-sidebar="true"]')?.getBoundingClientRect().width ?? 0
   const currentAgentId = useAgentStore((state) => state.current_agent_id)
   const currentAgentDetail = useAgentStore((state) => state.current_agent_detail)
   const {
@@ -318,17 +330,17 @@ export function CopilotPanel() {
 
   return (
     <aside
-      style={isPanelMaximized ? { left: leftPanelWidth } : { width: rightPanelWidth }}
+      style={isPanelMaximized ? { left: leftPanelWidth + platformSidebarWidth, right: 0 } : { width: rightPanelWidth }}
       className={cn(
-        'flex h-full shrink-0 flex-col border-l border-border bg-surface transition-all duration-300',
+        'flex h-full shrink-0 flex-col border-l border-border/80 bg-surface/95 transition-[width] duration-200',
         isPanelMaximized && 'fixed inset-y-0 right-0 z-50 shadow-token-lg',
       )}
     >
-      <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-3">
+      <div className="flex h-14 shrink-0 items-center justify-between border-b border-border/80 px-3.5">
         <div className="flex min-w-0 items-center gap-2 font-semibold text-text-main">
           <span className="truncate">对话预览</span>
           <Badge variant={status === 'FAILED' || status === 'TERMINATED' ? 'error' : status === 'SUCCEEDED' ? 'success' : 'info'}>
-            {STATUS_LABEL[status]}
+            {executionStatusLabel(status, termination_reason)}
           </Badge>
         </div>
         <div className="flex items-center gap-1">
@@ -467,7 +479,9 @@ export function CopilotPanel() {
                   tone={message.source === 'opening' || message.source === 'activity' ? 'muted' : 'normal'}
                   content={renderMessageContent(message, compact)}
                   contentText={message.content}
+                  attachments={message.attachments}
                   status={message.status}
+                  terminationReason={message.termination_reason}
                   showActions={message.role === 'assistant' && message.source !== 'opening' && message.source !== 'activity'}
                   showStatus={message.role === 'assistant' && message.source !== 'opening' && message.source !== 'activity'}
                   onRegenerate={message.role === 'assistant' && regenerateInput !== null ? () => handleRegenerate(regenerateInput) : undefined}
@@ -496,6 +510,7 @@ export function CopilotPanel() {
                 content={<RichContentRenderer content={liveContent} compact={compact} showTextCopy={false} />}
                 contentText={liveContent}
                 status={status}
+                terminationReason={termination_reason}
                 onRegenerate={() => handleRegenerate(last_user_input)}
               />
             ) : null}
@@ -503,8 +518,8 @@ export function CopilotPanel() {
         )}
       </div>
 
-      <div className="shrink-0 border-t border-border bg-surface p-4">
-        <ChatComposer />
+        <div className="shrink-0 border-t border-border/80 bg-surface p-3.5">
+        <ChatComposer key={currentAgentId ?? 'no-agent'} />
       </div>
     </aside>
   )

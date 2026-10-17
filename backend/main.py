@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -30,6 +31,7 @@ from backend.models.constants import ResponseCode
 from backend.models.schemas import BaseResponse
 from backend.services.marketplace_tool_adapter import marketplace_tool_adapter
 from backend.services.schema_migration_service import ensure_auth_columns, ensure_knowledge_governance_columns
+from backend.services.public_conversation_attachment_service import public_conversation_attachment_service
 import backend.models.orm  # noqa: F401 - registers ORM tables
 from plugin_marketplace import MarketplaceAPI
 from plugin_marketplace.api.routes import create_router as create_marketplace_router
@@ -73,9 +75,20 @@ async def lifespan(app: FastAPI):
     marketplace_tool_adapter._marketplace_api = pm_api
     logger.info("Plugin marketplace initialized.")
 
+    async def clean_public_attachments() -> None:
+        while True:
+            await asyncio.sleep(300)
+            await asyncio.to_thread(public_conversation_attachment_service.cleanup_expired)
+
+    cleanup_task = asyncio.create_task(clean_public_attachments())
     try:
         yield
     finally:
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
         pm_api = getattr(app.state, "pm_api", None)
         if pm_api is not None:
             await pm_api.close()

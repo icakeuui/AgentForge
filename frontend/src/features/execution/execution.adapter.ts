@@ -3,6 +3,7 @@ import { apiClient } from '../../lib/api/client'
 import { ApiError, normalizeApiError } from '../../lib/api/error'
 import { useAgentStore } from '../agent/agent.store'
 import { useExecutionStore } from './execution.store'
+import type { MessageAttachment } from '../../components/workspace/chat/MessageAttachments'
 import {
   IDLE_EXECUTION_STATE,
   type ConversationMessage,
@@ -46,7 +47,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-function createUserConversationMessage(input: string): ConversationMessage {
+function createUserConversationMessage(input: string, attachments: MessageAttachment[] = []): ConversationMessage {
   return {
     id: `user:pending:${Date.now()}`,
     role: 'user',
@@ -54,6 +55,7 @@ function createUserConversationMessage(input: string): ConversationMessage {
     execution_id: null,
     status: 'PENDING',
     source: 'chat',
+    attachments,
   }
 }
 
@@ -407,7 +409,7 @@ export const executionAdapter = {
     useExecutionStore.getState().createConversationSession(agentStore.current_agent_id, agentStore.current_agent_detail?.opening_statement ?? null)
   },
 
-  async startExecution(agent_id: string, input: string, confirmedToolActions: ConfirmedToolAction[] = []): Promise<ExecuteResponse | null> {
+  async startExecution(agent_id: string, input: string, confirmedToolActions: ConfirmedToolAction[] = [], attachments: MessageAttachment[] = []): Promise<ExecuteResponse | null> {
 
     const agentStore = useAgentStore.getState()
     const normalizedInput = input.trim()
@@ -438,7 +440,10 @@ export const executionAdapter = {
     }
 
     const conversationHistory = buildConversationHistory(store.conversation_messages)
-    const userMessage = createUserConversationMessage(normalizedInput)
+    const userMessage = createUserConversationMessage(
+      normalizedInput,
+      attachments.map((attachment) => ({ ...attachment, conversation_id: store.active_conversation_id })),
+    )
     const conversationMessages = [...store.conversation_messages, userMessage]
     useExecutionStore.setState((state) => ({
       ...state,

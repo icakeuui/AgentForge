@@ -7,12 +7,14 @@ import pytest
 
 from backend.core.security import encrypt_api_key
 from backend.models.constants import ExecutionStatus, TerminationReason
-from backend.models.orm import Agent, AgentOwnership
+from backend.models.orm import Agent, AgentOwnership, KnowledgeDocument
 from backend.models.schemas import AuthContext, ConversationHistoryMessage, GatewayResponse, GatewayToolCall, TokenUsage
 from backend.services.agent_runtime_assembler import ResolvedAgentRuntime
 from backend.services.execution_log_service import execution_log_service
 from backend.services.knowledge_service import knowledge_service
 from backend.services.langgraph_execution_strategy import LangGraphExecutionStrategy
+from backend.services.tool_need_classifier import tool_need_classifier
+from backend.services.retrieval_policy_service import retrieval_policy_service
 
 TEST_TEAM_ID = "00000000-0000-0000-0000-000000000001"
 
@@ -99,7 +101,11 @@ def test_langgraph_strategy_truncates_injected_knowledge_context():
             document_id=uuid.uuid4(),
             chunk_id=uuid.uuid4(),
             title=f"资料 {index}",
+            document_title=f"资料 {index}",
+            source_filename=f"资料 {index}.pdf",
             content=long_content,
+            document_id=uuid.uuid4(),
+            chunk_id=uuid.uuid4(),
             score=1.0,
         )
         for index in range(4)
@@ -111,6 +117,73 @@ def test_langgraph_strategy_truncates_injected_knowledge_context():
     assert injected_chars <= LangGraphExecutionStrategy.MAX_KNOWLEDGE_CONTEXT_CHARS
     assert len(knowledge_hits) == 4
     assert all(hit["truncated"] for hit in knowledge_hits)
+    assert all(f"source_filename: 资料 {index}.pdf" in context for index in range(4))
+    assert all(hit["source_filename"] == f"资料 {index}.pdf" for index, hit in enumerate(knowledge_hits))
+
+
+def test_document_inventory_questions_use_structured_retrieval_policy():
+    classification = tool_need_classifier.classify("你的知识库里面都有什么文件")
+
+    assert classification.intent_type == "KB_REQUIRED"
+    assert classification.query_subtype == "document_inventory"
+    policy = retrieval_policy_service.resolve(classification)
+    assert policy.retrieval_mode == "document_inventory"
+    assert policy.required is True
+
+
+def test_multi_source_question_detection_is_narrow():
+    assert LangGraphExecutionStrategy._is_multi_source_question("请对比国家目录和辽宁省目录")
+    assert LangGraphExecutionStrategy._is_multi_source_question("综合多个文件回答这个问题")
+    assert not LangGraphExecutionStrategy._is_multi_source_question("国家竞赛目录里有哪些竞赛？")
+
+
+@pytest.mark.asyncio
+async def test_document_inventory_uses_complete_metadata_in_llm_context(db_session):
+    agent_id = await _create_agent(db_session, supports_tools=False)
+    document_sources = [
+        ("国家竞赛目录.pdf", "国家竞赛目录.pdf"),
+        ("辽宁省竞赛目录.pdf", "辽宁省竞赛目录.pdf"),
+        ("学校竞赛认定目录.pdf", "学校竞赛认定目录（2026版）"),
+    ]
+    for filename, title in document_sources:
+        db_session.add(KnowledgeDocument(
+            agent_id=agent_id,
+            team_id=uuid.UUID(TEST_TEAM_ID),
+            title=title,
+            source_filename=filename,
+            document_type="pdf",
+            content="test-only metadata inventory fixture",
+            status="ACTIVE",
+            chunk_count=3,
+        ))
+    await db_session.commit()
+
+    model_gateway = AsyncMock()
+    model_gateway.call.return_value = GatewayResponse(
+        content="已列出关联资料。", token_usage=TokenUsage(total_tokens=5), finish_reason="stop"
+    )
+    tool_runtime = AsyncMock()
+    tool_runtime.resolve_agent_runtime.return_value = _resolved_runtime(agent_id, [], supports_tools=False)
+    strategy = LangGraphExecutionStrategy(
+        model_gateway=model_gateway,
+        tool_runtime=tool_runtime,
+        execution_log_service=execution_log_service,
+    )
+
+    result = await strategy.run(
+        agent_id=str(agent_id),
+        user_input="你的知识库里面都有什么文件？",
+        auth_context=_auth_context(),
+        request_id="req-document-inventory",
+    )
+
+    system_prompt = model_gateway.call.await_args.kwargs["messages"][0].content
+    assert result.status == ExecutionStatus.SUCCEEDED
+    assert "COMPLETE DOCUMENT INVENTORY: 3 linked document records" in system_prompt
+    for filename, _title in document_sources:
+        assert filename in system_prompt
+    assert "source_filename:" in system_prompt
+    assert "chunk_id:" not in system_prompt
 
 
 def _resolved_runtime(
@@ -124,6 +197,7 @@ def _resolved_runtime(
     unavailable_requested_tools: list[str] | None = None,
     binding_drift: dict | None = None,
     resolution_source: str = "bindings",
+    max_steps: int = 4,
 ) -> ResolvedAgentRuntime:
     tool_names = [
         str(((tool.get("function") or {}).get("name", ""))).strip()
@@ -134,13 +208,13 @@ def _resolved_runtime(
         agent_id=str(agent_id),
         agent_config={
             "capability_flags": {"supports_tools": supports_tools},
-            "constraints": {"max_steps": 4},
+            "constraints": {"max_steps": max_steps},
             "tools": configured_tools or [],
         },
         supports_tools=supports_tools,
         tool_schemas=tool_schemas,
         resolved_tool_names=tool_names,
-        max_steps=4,
+        max_steps=max_steps,
         unresolved_tools=unresolved_tools or [],
         configured_tools=configured_tools or [],
         bound_tool_ids=tool_names,
@@ -190,6 +264,111 @@ async def test_langgraph_strategy_includes_conversation_history_in_model_message
         "好的，我记住了。",
         "我刚才说我叫什么？",
     ]
+
+
+@pytest.mark.asyncio
+async def test_langgraph_strategy_continues_length_limited_model_output(db_session):
+    agent_id = await _create_agent(db_session)
+    chunks = [
+        "第一段说明内容。" * 25,
+        "第二段分析内容。" * 25,
+        "第三段补充内容。" * 25,
+        "第四段总结内容。" * 25,
+        "第五段最终结论。" * 25,
+    ]
+    model_gateway = AsyncMock()
+    tool_runtime = AsyncMock()
+    tool_runtime.resolve_agent_runtime.return_value = _resolved_runtime(agent_id, [], max_steps=1)
+    model_gateway.call.side_effect = [
+        *[
+            GatewayResponse(content=chunk, token_usage=TokenUsage(total_tokens=10), finish_reason="length")
+            for chunk in chunks[:-1]
+        ],
+        GatewayResponse(content=chunks[-1], token_usage=TokenUsage(total_tokens=8), finish_reason="stop"),
+    ]
+    strategy = LangGraphExecutionStrategy(
+        model_gateway=model_gateway,
+        tool_runtime=tool_runtime,
+        execution_log_service=execution_log_service,
+    )
+
+    result = await strategy.run(
+        agent_id=str(agent_id),
+        user_input="请完成一个较长的分析任务。",
+        auth_context=_auth_context(),
+        request_id="req-output-continuation",
+    )
+
+    assert result.status == ExecutionStatus.SUCCEEDED
+    assert result.termination_reason == TerminationReason.SUCCESS
+    assert result.final_answer == "".join(chunks)
+    assert 1000 <= len(result.final_answer) <= 2000
+    assert model_gateway.call.await_count == 5
+    continuation_messages = model_gateway.call.await_args_list[1].kwargs["messages"]
+    assert any(message.role == "assistant" and message.content == chunks[0] for message in continuation_messages)
+    assert any(message.role == "user" and "同一条回答的续写" in message.content for message in continuation_messages)
+
+
+@pytest.mark.asyncio
+async def test_langgraph_strategy_continues_beyond_previous_twenty_call_limit(db_session):
+    agent_id = await _create_agent(db_session)
+    model_gateway = AsyncMock()
+    tool_runtime = AsyncMock()
+    tool_runtime.resolve_agent_runtime.return_value = _resolved_runtime(agent_id, [], max_steps=1)
+    continuation_count = 23
+    model_gateway.call.side_effect = [
+        *[
+            GatewayResponse(content=f"分段内容 {index}。", token_usage=TokenUsage(total_tokens=10), finish_reason="length")
+            for index in range(continuation_count)
+        ],
+        GatewayResponse(content="最终完成。", token_usage=TokenUsage(total_tokens=8), finish_reason="stop"),
+    ]
+    strategy = LangGraphExecutionStrategy(
+        model_gateway=model_gateway,
+        tool_runtime=tool_runtime,
+        execution_log_service=execution_log_service,
+    )
+
+    result = await strategy.run(
+        agent_id=str(agent_id),
+        user_input="请生成较长内容并自动续写。",
+        auth_context=_auth_context(),
+        request_id="req-unbounded-continuation",
+    )
+
+    assert result.status == ExecutionStatus.SUCCEEDED
+    assert result.termination_reason == TerminationReason.SUCCESS
+    assert result.final_answer == "".join(f"分段内容 {index}。" for index in range(continuation_count)) + "最终完成。"
+    assert model_gateway.call.await_count == continuation_count + 1
+
+
+@pytest.mark.asyncio
+async def test_langgraph_strategy_stops_repeated_continuation_loop(db_session):
+    agent_id = await _create_agent(db_session)
+    model_gateway = AsyncMock()
+    tool_runtime = AsyncMock()
+    tool_runtime.resolve_agent_runtime.return_value = _resolved_runtime(agent_id, [], max_steps=1)
+    model_gateway.call.side_effect = [
+        GatewayResponse(content="重复片段内容。", token_usage=TokenUsage(total_tokens=10), finish_reason="length"),
+        GatewayResponse(content="重复片段内容。", token_usage=TokenUsage(total_tokens=10), finish_reason="length"),
+    ]
+    strategy = LangGraphExecutionStrategy(
+        model_gateway=model_gateway,
+        tool_runtime=tool_runtime,
+        execution_log_service=execution_log_service,
+    )
+
+    result = await strategy.run(
+        agent_id=str(agent_id),
+        user_input="请继续生成。",
+        auth_context=_auth_context(),
+        request_id="req-continuation-stalled",
+    )
+
+    assert result.status == ExecutionStatus.FAILED
+    assert result.termination_reason == TerminationReason.CONTINUATION_STALLED
+    assert "重复了先前片段" in (result.final_answer or "")
+    assert model_gateway.call.await_count == 2
 
 
 @pytest.mark.asyncio

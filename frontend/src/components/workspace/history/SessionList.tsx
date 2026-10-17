@@ -9,11 +9,11 @@ interface SessionListProps {
 export function SessionList({ title, action, children }: SessionListProps) {
   return (
     <div className="flex flex-col space-y-2">
-      <div className="flex items-center justify-between px-3 text-xs font-semibold uppercase tracking-wider text-text-muted">
+      <div className="flex items-center justify-between px-3 text-[11px] font-semibold tracking-wide text-text-muted">
         <span>{title}</span>
         {action && <div>{action}</div>}
       </div>
-      <div className="flex flex-col space-y-[2px] px-2">{children}</div>
+      <div className="flex flex-col space-y-1 px-2">{children}</div>
     </div>
   )
 }

@@ -12,8 +12,8 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 }
 
 const variantMap: Record<Variant, string> = {
-  primary: 'bg-primary text-white hover:bg-primary-hover',
-  secondary: 'border border-border bg-surface text-text-main hover:bg-bg-soft',
+  primary: 'bg-primary text-white shadow-token-sm hover:bg-primary-hover hover:shadow-token-lg active:translate-y-px',
+  secondary: 'border border-border bg-surface text-text-main shadow-[0_1px_2px_rgba(20,35,63,0.04)] hover:border-primary/20 hover:bg-bg-soft',
   ghost: 'text-text-sub hover:bg-bg-soft hover:text-text-main',
 }
 
@@ -27,7 +27,7 @@ export function Button({ className, children, variant = 'primary', size = 'md', 
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-token-md font-medium transition-colors duration-200',
+        'inline-flex items-center justify-center gap-2 rounded-token-md font-medium transition-all duration-200',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50',
         variantMap[variant],
         sizeMap[size],

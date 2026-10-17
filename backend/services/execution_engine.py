@@ -28,6 +28,7 @@ class ExecutionEngine:
         policy_overrides: Optional[dict] = None,
         execution_id: Optional[uuid.UUID] = None,
         start_log: bool = True,
+        attachment_context: str = "",
     ) -> ExecutionResult:
         if not request_id:
             request_id = auth_context.request_id or f"exec-{uuid.uuid4().hex[:8]}"
@@ -47,6 +48,7 @@ class ExecutionEngine:
             policy_overrides=policy_overrides,
             execution_id=execution_id,
             start_log=start_log,
+            attachment_context=attachment_context,
         )
 
 

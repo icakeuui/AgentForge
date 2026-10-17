@@ -1,4 +1,4 @@
-import { LayoutTemplate, Play } from 'lucide-react'
+import { Bot, CheckCircle2, CircleAlert, LayoutTemplate, Play } from 'lucide-react'
 
 import { useAgentStore } from '../../../features/agent/agent.store'
 import { RUN_AGENT_TRIGGER_EVENT } from '../../../features/execution/execution.events'
@@ -24,20 +24,30 @@ export function ContextHeader() {
     currentAgentDetail !== null && currentAgentDetail.is_available && agentContextStatus === 'READY' && !isExecutionLocked
 
   return (
-    <div className="z-10 flex shrink-0 flex-wrap items-center justify-between gap-4 border-b border-border bg-bg px-4 py-4 md:px-6">
+    <div className="z-10 mx-3 mt-3 flex shrink-0 flex-wrap items-center justify-between gap-4 rounded-token-lg border border-border/80 bg-surface px-4 py-3 shadow-token-sm md:mx-4 md:mt-4 md:px-5 xl:mx-5">
       <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-token-md bg-primary/10 text-primary">
-          <LayoutTemplate size={16} />
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-token-md bg-primary/10 text-primary ring-1 ring-primary/10">
+          {currentAgentDetail?.avatar_url ? (
+            <img src={currentAgentDetail.avatar_url} alt="" className="h-full w-full rounded-token-md object-cover" />
+          ) : currentAgentId !== null ? <Bot size={19} /> : <LayoutTemplate size={18} />}
         </div>
         <div className="min-w-0">
-          <h1 className="truncate text-xl font-semibold text-text-main">{title || '云端构建器'}</h1>
-          <p className="mt-1 max-w-2xl truncate text-sm text-text-muted">{subtitle}</p>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h1 className="truncate text-lg font-semibold tracking-tight text-text-main md:text-xl">{title || '云端构建器'}</h1>
+            {currentAgentId !== null ? (
+              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${currentAgentDetail?.is_available ? 'bg-success-soft text-success' : 'bg-error-soft text-error'}`}>
+                {currentAgentDetail?.is_available ? <CheckCircle2 size={12} /> : <CircleAlert size={12} />}
+                {currentAgentDetail?.is_available ? '可用' : '待检查'}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-0.5 max-w-2xl truncate text-sm text-text-muted">{subtitle}</p>
         </div>
       </div>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <Button
           variant="primary"
-          size="sm"
+          size="md"
           leftIcon={<Play size={14} />}
           disabled={!canRunAgent}
           onClick={() => {

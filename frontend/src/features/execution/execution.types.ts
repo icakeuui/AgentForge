@@ -1,3 +1,5 @@
+import type { MessageAttachment } from '../../components/workspace/chat/MessageAttachments'
+
 export type ExecutionStatus = 'IDLE' | 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'TERMINATED'
 export type PreviewPhase = 'empty' | 'planning' | 'building' | 'booting' | 'ready' | 'failed' | 'deployed'
 export type DeploymentStatus = 'IDLE' | 'PENDING' | 'SUCCEEDED' | 'FAILED'
@@ -8,8 +10,10 @@ export interface ConversationMessage {
   content: string
   execution_id: string | null
   status?: ExecutionStatus
+  termination_reason?: string | null
   source?: 'chat' | 'opening' | 'activity'
   knowledge_badge?: string | null
+  attachments?: MessageAttachment[]
 }
 
 export interface ExecutionStep {

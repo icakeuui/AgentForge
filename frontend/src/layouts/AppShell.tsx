@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 
 import { useUiShellStore } from '../features/ui-shell/uiShell.store'
 import { CopilotPanel } from '../components/workspace/layout/CopilotPanel'
 import { WorkspaceRail } from '../components/workspace/layout/WorkspaceRail'
+import { PlatformShell } from '../components/navigation/PlatformShell'
 import { cn } from '../lib/cn'
 
 export function AppShell() {
@@ -12,8 +13,10 @@ export function AppShell() {
 
   const [isResizingLeft, setIsResizingLeft] = useState(false)
   const [isResizingRight, setIsResizingRight] = useState(false)
+  const leftResizeOriginX = useRef(0)
   const startResizingLeft = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
+    leftResizeOriginX.current = e.currentTarget.getBoundingClientRect().left
     setIsResizingLeft(true)
   }, [])
 
@@ -30,7 +33,7 @@ export function AppShell() {
   const resize = useCallback(
     (e: MouseEvent) => {
       if (isResizingLeft) {
-        setLeftPanelWidth(e.clientX)
+        setLeftPanelWidth(e.clientX - leftResizeOriginX.current)
       } else if (isResizingRight) {
         setRightPanelWidth(window.innerWidth - e.clientX)
       }
@@ -60,35 +63,39 @@ export function AppShell() {
   }, [isResizingLeft, isResizingRight, resize, stopResizing])
 
   return (
-    <div className="flex h-screen w-screen flex-row overflow-hidden bg-bg text-text-main">
-      <WorkspaceRail />
+    <PlatformShell>
+      <div className="flex h-screen min-h-0 w-full min-w-0 flex-row overflow-hidden bg-bg text-text-main">
+        <WorkspaceRail />
 
-      <div
-        className={cn(
-          'group relative z-20 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-primary/30',
-          isResizingLeft && 'bg-primary/50',
-        )}
-        onMouseDown={startResizingLeft}
-      >
-        <div className="absolute inset-y-0 -left-1 -right-1" />
-      </div>
+        <div
+          className={cn(
+            'group relative z-20 w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-primary/30',
+            isResizingLeft && 'bg-primary/50',
+          )}
+          onMouseDown={startResizingLeft}
+          aria-label="调整智能体列表宽度"
+        >
+          <div className="absolute inset-y-0 -left-1 -right-1" />
+        </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <main className="flex-1 overflow-hidden bg-bg relative animate-in fade-in duration-500">
-          <Outlet />
-        </main>
-      </div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <main className="relative flex-1 overflow-hidden bg-bg animate-in fade-in duration-500">
+            <Outlet />
+          </main>
+        </div>
 
-      <div
-        className={cn(
-          'group relative z-20 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-primary/30',
-          isResizingRight && 'bg-primary/50',
-        )}
-        onMouseDown={startResizingRight}
-      >
-        <div className="absolute inset-y-0 -left-1 -right-1" />
+        <div
+          className={cn(
+            'group relative z-20 w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-primary/30',
+            isResizingRight && 'bg-primary/50',
+          )}
+          onMouseDown={startResizingRight}
+          aria-label="调整对话预览宽度"
+        >
+          <div className="absolute inset-y-0 -left-1 -right-1" />
+        </div>
+        <CopilotPanel />
       </div>
-      <CopilotPanel />
-    </div>
+    </PlatformShell>
   )
 }

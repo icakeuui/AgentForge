@@ -41,6 +41,16 @@ export interface PublicExecutionStart {
   request_id: string
 }
 
+export interface PublicConversation {
+  conversation_id: string
+  conversation_token: string
+}
+
+export interface PublicAttachment {
+  id: string
+  name: string
+}
+
 export interface PublicExecutionReplay {
   execution_id: string
   agent_id: string
@@ -134,6 +144,22 @@ function mapExecutionReplay(raw: unknown): PublicExecutionReplay {
 }
 
 export const publicAgentAdapter = {
+  async createConversation(slug: string): Promise<PublicConversation> {
+    const result = await apiClient.request<PublicConversation>(`/public/agents/${slug}/conversations`, {
+      method: 'POST', authMode: 'none',
+    })
+    return result.data
+  },
+
+  async uploadAttachment(slug: string, conversation: PublicConversation, file: File): Promise<PublicAttachment> {
+    const body = new FormData()
+    body.append('file', file)
+    const result = await apiClient.request<PublicAttachment>(
+      `/public/agents/${slug}/conversations/${conversation.conversation_id}/attachments`,
+      { method: 'POST', authMode: 'none', body, headers: { 'X-Public-Conversation-Token': conversation.conversation_token } },
+    )
+    return result.data
+  },
   async fetchPublication(agentId: string): Promise<PublishedAgent | null> {
     try {
       const result = await apiClient.request<unknown>(`/agents/${agentId}/publish`, {
@@ -192,13 +218,16 @@ export const publicAgentAdapter = {
     return result.data.map((item) => mapPublicProfile(item))
   },
 
-  async startPublicExecution(slug: string, input: string, conversationHistory: PublicConversationMessage[]): Promise<PublicExecutionStart> {
+  async startPublicExecution(slug: string, input: string, conversationHistory: PublicConversationMessage[], conversation?: PublicConversation, attachmentIds: string[] = []): Promise<PublicExecutionStart> {
     const result = await apiClient.request<unknown>(`/public/agents/${slug}/execute`, {
       method: 'POST',
       authMode: 'none',
+      headers: conversation ? { 'X-Public-Conversation-Token': conversation.conversation_token } : undefined,
       body: {
         input,
         conversation_history: conversationHistory,
+        conversation_id: conversation?.conversation_id,
+        attachment_ids: attachmentIds,
       },
     })
     return mapExecutionStart(result.data)

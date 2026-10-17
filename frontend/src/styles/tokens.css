@@ -4,27 +4,31 @@
   --font-sans: 'Plus Jakarta Sans', Inter, system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
 
+  --radius-sm: 10px;
   --radius-md: 12px;
   --radius-lg: 18px;
+  --radius-xl: 24px;
 
-  --container-max: 1280px;
+  --container-max: 1400px;
 
   --app-background-image: none;
 }
 
 :root,
 :root[data-theme='light'] {
-  --color-bg: #f8fafc;
-  --color-bg-soft: #f1f5f9;
+  --color-bg: #f6f9fe;
+  --color-bg-soft: #eef4fc;
+  --color-blue-soft: #e7f0ff;
+  --color-blue-muted: #d8e7fb;
   --color-surface: #ffffff;
-  --color-border: #e2e8f0;
+  --color-border: #e1e9f4;
 
-  --color-text-main: #0f172a;
-  --color-text-sub: #475569;
-  --color-text-muted: #64748b;
+  --color-text-main: #14233f;
+  --color-text-sub: #53627e;
+  --color-text-muted: #78869e;
 
-  --color-primary: #2563eb;
-  --color-primary-hover: #1d4ed8;
+  --color-primary: #2463eb;
+  --color-primary-hover: #174fc8;
 
   --color-success: #16a34a;
   --color-success-soft: #f0fdf4;
@@ -35,13 +39,19 @@
   --color-info: #2563eb;
   --color-info-soft: #eff6ff;
 
-  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.06);
-  --shadow-xl: 0 14px 24px -8px rgba(15, 23, 42, 0.15);
+  --shadow-sm: 0 2px 8px -3px rgba(26, 57, 111, 0.09), 0 1px 2px rgba(26, 57, 111, 0.04);
+  --shadow-lg: 0 12px 30px -14px rgba(36, 99, 235, 0.22), 0 4px 12px -6px rgba(26, 57, 111, 0.08);
+  --shadow-xl: 0 18px 42px -18px rgba(26, 57, 111, 0.2);
+  --app-background-image:
+    radial-gradient(ellipse at 75% 0%, rgba(207, 225, 255, 0.26), transparent 35%),
+    linear-gradient(180deg, #f8fbff 0%, #f5f8fd 100%);
 }
 
 :root[data-theme='dark'] {
   --color-bg: #09111b;
   --color-bg-soft: #111c29;
+  --color-blue-soft: rgba(56, 189, 248, 0.14);
+  --color-blue-muted: rgba(56, 189, 248, 0.22);
   --color-surface: rgba(14, 25, 38, 0.92);
   --color-border: #1d3145;
 
@@ -72,6 +82,8 @@
 :root[data-theme='summer'] {
   --color-bg: #f4fbff;
   --color-bg-soft: #e9f8f5;
+  --color-blue-soft: #e0f2fe;
+  --color-blue-muted: #cce8fb;
   --color-surface: rgba(255, 255, 255, 0.86);
   --color-border: #cfe5ea;
 

@@ -34,6 +34,7 @@ interface AuthStoreState {
   login: (email: string, password: string) => Promise<void>
   registerComplete: (payload: authAdapter.RegisterCompletePayload) => Promise<void>
   logout: () => Promise<void>
+  updateProfile: (payload: authAdapter.UpdateProfilePayload) => Promise<void>
   refresh: () => Promise<boolean>
   setTokens: (pair: authAdapter.TokenPairResponse) => void
   clearSession: () => void
@@ -109,6 +110,11 @@ export const useAuthStore = create<AuthStoreState>((set) => ({
     }
     clearSessionTokens()
     set(() => ({ status: 'guest', user: null }))
+  },
+
+  updateProfile: async (payload) => {
+    const user = await authAdapter.updateProfile(payload)
+    set(() => ({ status: 'authenticated', user }))
   },
 
   refresh: async () => {

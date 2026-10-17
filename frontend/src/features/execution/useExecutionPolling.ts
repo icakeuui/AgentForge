@@ -7,7 +7,7 @@ import { executionAdapter } from './execution.adapter'
 import { useExecutionStore } from './execution.store'
 
 const POLLING_INTERVAL_MS = 250
-const MAX_CONSECUTIVE_FAILURES = 3
+const NOTIFY_AFTER_CONSECUTIVE_FAILURES = 10
 
 export function useExecutionPolling(execution_id: string | null) {
   const currentAgentId = useAgentStore((state) => state.current_agent_id)
@@ -15,6 +15,8 @@ export function useExecutionPolling(execution_id: string | null) {
   const consecutiveFailureRef = useRef(0)
   const pollingExecutionIdRef = useRef<string | null>(null)
   const pollingAgentIdRef = useRef<string | null>(null)
+  const pollInFlightRef = useRef(false)
+  const networkFailureNotifiedRef = useRef(false)
 
   useEffect(() => {
     if (execution_id === null) {
@@ -29,6 +31,7 @@ export function useExecutionPolling(execution_id: string | null) {
     pollingExecutionIdRef.current = execution_id
     pollingAgentIdRef.current = initialAgentId
     consecutiveFailureRef.current = 0
+    networkFailureNotifiedRef.current = false
 
     const stopPolling = (finalize = false) => {
       if (intervalRef.current !== null) {
@@ -41,6 +44,7 @@ export function useExecutionPolling(execution_id: string | null) {
     }
 
     const poll = async () => {
+      if (pollInFlightRef.current) return
       const latestExecutionStore = useExecutionStore.getState()
       const latestAgentStore = useAgentStore.getState()
 
@@ -63,6 +67,7 @@ export function useExecutionPolling(execution_id: string | null) {
         return
       }
 
+      pollInFlightRef.current = true
       try {
         const snapshot = await executionAdapter.fetchExecution(execution_id)
         const currentExecutionId = useExecutionStore.getState().current_execution_id
@@ -72,6 +77,7 @@ export function useExecutionPolling(execution_id: string | null) {
 
         executionAdapter.applyExecutionSnapshot(snapshot)
         consecutiveFailureRef.current = 0
+        networkFailureNotifiedRef.current = false
 
         if (
           snapshot.status === 'SUCCEEDED' ||
@@ -82,29 +88,15 @@ export function useExecutionPolling(execution_id: string | null) {
         }
       } catch (error) {
         consecutiveFailureRef.current += 1
-        if (consecutiveFailureRef.current < MAX_CONSECUTIVE_FAILURES) {
-          return
+        if (
+          consecutiveFailureRef.current >= NOTIFY_AFTER_CONSECUTIVE_FAILURES &&
+          !networkFailureNotifiedRef.current
+        ) {
+          networkFailureNotifiedRef.current = true
+          notify.error(`暂时无法获取任务进度，正在继续重试；后端任务状态未被更改。${normalizeApiError(error).message}`)
         }
-
-        const currentExecutionId = useExecutionStore.getState().current_execution_id
-        if (currentExecutionId === execution_id) {
-          useExecutionStore.getState().updateExecution({
-            execution_id,
-            status: 'FAILED',
-            final_answer: null,
-            error_code: null,
-            error_source: null,
-            error_details: null,
-            error_message: normalizeApiError(error).message,
-            react_steps: [],
-            step_logs: [],
-            termination_reason: 'POLLING_NETWORK_FAILURE',
-            total_token_usage: null,
-          })
-        }
-
-        stopPolling(true)
-        notify.error(normalizeApiError(error).message)
+      } finally {
+        pollInFlightRef.current = false
       }
     }
 

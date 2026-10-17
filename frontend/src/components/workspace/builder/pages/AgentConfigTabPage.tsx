@@ -457,16 +457,16 @@ function AgentConfigEditor({ initialMode, initialAgent }: AgentConfigEditorProps
   }
 
   return (
-    <div className="h-full overflow-auto rounded-token-lg border border-border bg-surface">
-      <div className="mx-auto max-w-6xl space-y-5 p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
+    <div className="h-full min-w-0 overflow-auto rounded-token-lg border border-border/80 bg-surface shadow-token-sm">
+      <div className="mx-auto max-w-7xl space-y-5 p-4 md:p-5 xl:space-y-6 xl:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/80 pb-5">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-token-md bg-primary/10 text-primary">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-token-md bg-primary/10 text-primary ring-1 ring-primary/10">
                 <Bot size={17} />
               </span>
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold text-text-main">智能体配置</h2>
+                <h2 className="text-lg font-semibold tracking-tight text-text-main">智能体配置</h2>
                 <p className="mt-1 text-sm text-text-sub">以人设逻辑为中心，配置模型连接和运行参数。</p>
               </div>
             </div>
@@ -498,15 +498,15 @@ function AgentConfigEditor({ initialMode, initialAgent }: AgentConfigEditorProps
 
         {configMode === 'edit' && editingAgent !== null ? (
           <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-token-md border border-border bg-bg-soft/40 p-3">
+          <div className="rounded-token-lg border border-border/80 bg-bg-soft/50 p-4">
               <p className="text-xs font-medium text-text-muted">当前智能体</p>
               <p className="mt-2 truncate text-sm font-semibold text-text-main">{editingAgent.name}</p>
             </div>
-            <div className="rounded-token-md border border-border bg-bg-soft/40 p-3">
+          <div className="rounded-token-lg border border-border/80 bg-bg-soft/50 p-4">
               <p className="text-xs font-medium text-text-muted">模型</p>
               <p className="mt-2 truncate text-sm font-semibold text-text-main">{editingAgent.llm_model_name || '未配置'}</p>
             </div>
-            <div className="rounded-token-md border border-border bg-bg-soft/40 p-3">
+          <div className="rounded-token-lg border border-border/80 bg-bg-soft/50 p-4">
               <p className="text-xs font-medium text-text-muted">可用状态</p>
               <div className="mt-2">
                 <Badge variant={editingAgent.is_available ? 'success' : 'error'}>
@@ -517,34 +517,40 @@ function AgentConfigEditor({ initialMode, initialAgent }: AgentConfigEditorProps
           </div>
         ) : null}
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <section className="space-y-4 rounded-token-md border border-border bg-bg p-4">
+        <div className="grid min-w-0 gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(290px,350px)]">
+          <section className="min-w-0 space-y-5 rounded-token-lg border border-border/80 bg-surface p-4 shadow-token-sm md:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-token-md bg-primary/10 text-primary">
                   <ScrollText size={16} />
                 </span>
                 <div className="min-w-0">
-                  <h3 className="text-base font-semibold text-text-main">人设与逻辑</h3>
+                <h3 className="text-base font-semibold tracking-tight text-text-main">人设与逻辑</h3>
                   <p className="mt-1 text-xs leading-relaxed text-text-sub">这部分会作为 system prompt 注入每轮对话，是智能体行为的核心。</p>
                 </div>
               </div>
               <Badge variant="info">System Prompt</Badge>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.42fr)]">
-              <div>
+            <div className="space-y-3 rounded-token-md border border-border/70 bg-bg-soft/35 p-4">
+              <h4 className="text-sm font-semibold text-text-main">基本信息</h4>
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.42fr)]">
+                <div>
                 <Input id="agent-name" label="智能体名称" placeholder="输入智能体名称" value={form.name} onChange={(e) => setFormField('name', e.target.value)} />
                 {fieldErrors.name && <p className="mt-1 text-xs text-red-500">{fieldErrors.name}</p>}
+                </div>
+                <Input id="agent-avatar" label="头像地址" placeholder="https://example.com/avatar.png" value={form.avatar_url} onChange={(e) => setFormField('avatar_url', e.target.value)} />
               </div>
-              <Input id="agent-avatar" label="头像地址" placeholder="https://example.com/avatar.png" value={form.avatar_url} onChange={(e) => setFormField('avatar_url', e.target.value)} />
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="agent-description" className="text-sm font-semibold text-text-main">核心提示词</label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label htmlFor="agent-description" className="text-sm font-semibold text-text-main">核心提示词</label>
+                <span className="text-xs text-text-muted">System Prompt</span>
+              </div>
               <textarea
                 id="agent-description"
-                className="min-h-[340px] w-full resize-y rounded-token-md border border-border bg-surface px-4 py-3 text-sm leading-relaxed text-text-main placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                className="min-h-[320px] w-full resize-y rounded-token-md border border-border bg-bg-soft/30 px-4 py-3 text-sm leading-relaxed text-text-main placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                 placeholder="写下智能体的人设、目标、边界、判断逻辑、回复风格和禁止事项。这里保存后会作为 system prompt 参与每轮对话。"
                 value={form.description}
                 onChange={(e) => setFormField('description', e.target.value)}
@@ -556,7 +562,7 @@ function AgentConfigEditor({ initialMode, initialAgent }: AgentConfigEditorProps
               {fieldErrors.description && <p className="text-xs text-red-500">{fieldErrors.description}</p>}
             </div>
 
-            <div className="space-y-2 rounded-token-md border border-border bg-surface p-3">
+            <div className="space-y-2 rounded-token-md border border-border/80 bg-bg-soft/35 p-4">
               <div className="flex items-center gap-2">
                 <MessageSquareText size={15} className="text-text-muted" />
                 <label htmlFor="agent-opening-statement" className="text-sm font-semibold text-text-main">默认开场白</label>
@@ -576,8 +582,8 @@ function AgentConfigEditor({ initialMode, initialAgent }: AgentConfigEditorProps
             </div>
           </section>
 
-          <aside className="space-y-4">
-            <section className="space-y-3 rounded-token-md border border-border bg-bg p-4">
+          <aside className="min-w-0 space-y-4">
+            <section className="space-y-3 rounded-token-lg border border-border/80 bg-surface p-4 shadow-token-sm">
               <div className="flex items-center gap-2 text-sm font-semibold text-text-main">
                 <Wrench size={15} className="text-text-muted" />
                 模型连接
@@ -608,7 +614,7 @@ function AgentConfigEditor({ initialMode, initialAgent }: AgentConfigEditorProps
               {fieldErrors.llm_model_name && <p className="text-xs text-red-500">{fieldErrors.llm_model_name}</p>}
             </section>
 
-            <section className="space-y-3 rounded-token-md border border-border bg-bg p-4">
+            <section className="space-y-3 rounded-token-lg border border-border/80 bg-surface p-4 shadow-token-sm">
               <div className="flex items-center gap-2 text-sm font-semibold text-text-main">
                 <Bot size={15} className="text-text-muted" />
                 向量模型（Embedding）
@@ -654,7 +660,7 @@ function AgentConfigEditor({ initialMode, initialAgent }: AgentConfigEditorProps
               <p className="text-xs leading-relaxed text-text-muted">用于将知识库文档和用户查询转换为向量，以支持知识检索。接口密钥会由后端加密保存。</p>
             </section>
 
-            <section className="space-y-3 rounded-token-md border border-border bg-bg p-4">
+            <section className="space-y-3 rounded-token-lg border border-border/80 bg-surface p-4 shadow-token-sm">
               <div className="flex items-center gap-2 text-sm font-semibold text-text-main">
                 <CircleAlert size={15} className="text-text-muted" />
                 运行参数
@@ -663,7 +669,7 @@ function AgentConfigEditor({ initialMode, initialAgent }: AgentConfigEditorProps
               <Input id="max-tokens" label="最大令牌数" placeholder="1000" value={form.max_tokens} onChange={(e) => setFormField('max_tokens', e.target.value)} />
             </section>
 
-            <section className="space-y-3 rounded-token-md border border-border bg-bg p-4">
+            <section className="space-y-3 rounded-token-lg border border-border/80 bg-surface p-4 shadow-token-sm">
               <div className="flex items-center gap-2 text-sm font-semibold text-text-main">
                 <CheckCircle2 size={15} className="text-text-muted" />
                 保存

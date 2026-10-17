@@ -111,6 +111,23 @@ class AvatarUploadResponse(BaseModel):
     avatar_url: str
 
 
+class UpdateProfileRequest(BaseModel):
+    display_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        display_name = value.strip()
+        if not display_name:
+            raise ValueError("display_name cannot be empty")
+        if len(display_name) > 80:
+            raise ValueError("display_name is too long")
+        return display_name
+
+
 class LoginRequest(RegisterEmailRequest):
     password: str
 
@@ -281,7 +298,7 @@ class IntentClassificationResult(BaseModel):
 
 
 class RetrievalPolicy(BaseModel):
-    retrieval_mode: Literal["none", "optional_hybrid", "required_hybrid", "exact_clause", "document_summary"]
+    retrieval_mode: Literal["none", "optional_hybrid", "required_hybrid", "exact_clause", "document_summary", "document_inventory"]
     limit: int = 4
     min_score: float = 0.0
     required: bool = False
@@ -471,6 +488,8 @@ class PublicAgentSquareItem(PublicAgentProfile):
 class PublicExecuteAgentRequest(BaseModel):
     input: str
     conversation_history: List["ConversationHistoryMessage"] = Field(default_factory=list)
+    conversation_id: Optional[UUID4] = None
+    attachment_ids: List[UUID4] = Field(default_factory=list)
 
     @field_validator("input")
     @classmethod
@@ -541,6 +560,8 @@ class KnowledgeSearchResult(BaseModel):
     document_id: UUID4
     chunk_id: UUID4
     title: str
+    document_title: Optional[str] = None
+    source_filename: Optional[str] = None
     content: str
     score: float
     match_type: str = "keyword"

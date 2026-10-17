@@ -161,7 +161,8 @@ class ModelGateway:
         if not api_key.strip():
             self._raise_gateway_error(ArcErrorCode.MISSING_API_KEY, "Agent API key is missing", status_code=422)
 
-        client = AsyncOpenAI(api_key=api_key, base_url=provider_url, timeout=None, max_retries=0)
+        # Retry transient connection/time-out failures; authentication and request errors remain terminal.
+        client = AsyncOpenAI(api_key=api_key, base_url=provider_url, timeout=None, max_retries=2)
         model_name = config.model.strip()
         if not model_name:
             self._raise_gateway_error(ArcErrorCode.MODEL_NOT_FOUND, "Agent model name is missing", status_code=422)

@@ -35,6 +35,11 @@ export interface AvatarUploadResponse {
   avatar_url: string
 }
 
+export interface UpdateProfilePayload {
+  display_name?: string
+  avatar_url?: string | null
+}
+
 export interface RegisterVerifyPayload {
   email: string
   code: string
@@ -133,6 +138,15 @@ export async function uploadAvatar(file: File): Promise<AvatarUploadResponse> {
 export async function getSession(): Promise<AuthUserProfile> {
   const response = await apiClient.request<AuthUserProfile>('/auth/session', {
     method: 'GET',
+    authMode: 'required',
+  })
+  return response.data
+}
+
+export async function updateProfile(payload: UpdateProfilePayload): Promise<AuthUserProfile> {
+  const response = await apiClient.request<AuthUserProfile>('/auth/profile', {
+    method: 'PATCH',
+    body: payload,
     authMode: 'required',
   })
   return response.data

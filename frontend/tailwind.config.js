@@ -6,6 +6,8 @@ export default {
       colors: {
         bg: 'var(--color-bg)',
         'bg-soft': 'var(--color-bg-soft)',
+        'blue-soft': 'var(--color-blue-soft)',
+        'blue-muted': 'var(--color-blue-muted)',
         surface: 'var(--color-surface)',
         border: 'var(--color-border)',
         primary: 'var(--color-primary)',
@@ -23,11 +25,14 @@ export default {
         'text-muted': 'var(--color-text-muted)',
       },
       borderRadius: {
+        'token-sm': 'var(--radius-sm)',
         'token-md': 'var(--radius-md)',
         'token-lg': 'var(--radius-lg)',
+        'token-xl': 'var(--radius-xl)',
       },
       boxShadow: {
         'token-sm': 'var(--shadow-sm)',
+        'token-lg': 'var(--shadow-lg)',
         'token-xl': 'var(--shadow-xl)',
       },
       fontFamily: {
