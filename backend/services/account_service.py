@@ -3,11 +3,12 @@ from __future__ import annotations
 import hashlib
 import inspect
 import secrets
+import unicodedata
 import uuid
 from datetime import datetime, timedelta, timezone
 
 import jwt
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -69,6 +70,7 @@ class AccountService:
             code_hash=self._hash_code(email=email, purpose=REGISTER_PURPOSE, code=code),
             send_status="PENDING",
             send_attempts=0,
+            verification_attempts=0,
             expires_at=datetime.now(timezone.utc) + timedelta(seconds=settings.EMAIL_VERIFICATION_CODE_TTL_SECONDS),
         )
         session.add(verification)
@@ -118,11 +120,13 @@ class AccountService:
         now = datetime.now(timezone.utc)
         if self._as_utc(verification.expires_at) <= now:
             raise self._flow_error("VERIFICATION_CODE_EXPIRED", "Verification code is expired")
-        expected_hash = self._hash_code(email=email, purpose=REGISTER_PURPOSE, code=code)
+        if verification.verification_attempts >= MAX_CODE_ATTEMPTS:
+            raise self._flow_error("VERIFICATION_CODE_ATTEMPTS_EXCEEDED", "Verification code attempts exceeded")
+        expected_hash = self._hash_code(email=email, purpose=REGISTER_PURPOSE, code=self._normalize_code(code))
         if not secrets.compare_digest(verification.code_hash, expected_hash):
             verification.verification_attempts += 1
             await session.commit()
-            if verification.verification_attempts > MAX_CODE_ATTEMPTS:
+            if verification.verification_attempts >= MAX_CODE_ATTEMPTS:
                 raise self._flow_error("VERIFICATION_CODE_ATTEMPTS_EXCEEDED", "Verification code attempts exceeded")
             raise self._flow_error("VERIFICATION_CODE_INVALID", "Verification code is invalid")
         verification.consumed_at = now
@@ -234,6 +238,7 @@ class AccountService:
             code_hash=self._hash_code(email=email, purpose=RESET_PASSWORD_PURPOSE, code=code),
             send_status="PENDING",
             send_attempts=0,
+            verification_attempts=0,
             expires_at=datetime.now(timezone.utc) + timedelta(seconds=settings.PASSWORD_RESET_CODE_TTL_SECONDS),
         )
         session.add(verification)
@@ -284,6 +289,11 @@ class AccountService:
         credential.password_hash = password_service.hash_password(new_password)
         credential.password_updated_at = now
         verification.consumed_at = now
+        await session.execute(
+            update(RefreshToken)
+            .where(RefreshToken.user_id == user.user_id, RefreshToken.revoked_at.is_(None))
+            .values(revoked_at=now)
+        )
         await session.commit()
 
     async def get_profile_for_auth(self, session: AsyncSession, auth: AuthContext) -> AuthUserProfile:
@@ -403,7 +413,7 @@ class AccountService:
         result = await session.execute(
             select(EmailVerificationCode)
             .where(EmailVerificationCode.email == email, EmailVerificationCode.purpose == purpose)
-            .order_by(desc(EmailVerificationCode.created_at))
+            .order_by(desc(EmailVerificationCode.created_at), desc(EmailVerificationCode.sent_at), desc(EmailVerificationCode.id))
             .limit(1)
         )
         return result.scalar_one_or_none()
@@ -424,7 +434,7 @@ class AccountService:
                 EmailVerificationCode.consumed_at.is_(None),
                 EmailVerificationCode.invalidated_at.is_(None),
             )
-            .order_by(desc(EmailVerificationCode.created_at))
+            .order_by(desc(EmailVerificationCode.created_at), desc(EmailVerificationCode.sent_at), desc(EmailVerificationCode.id))
             .limit(1)
         )
         return result.scalar_one_or_none()
@@ -443,11 +453,13 @@ class AccountService:
         now = datetime.now(timezone.utc)
         if self._as_utc(verification.expires_at) <= now:
             raise self._flow_error("VERIFICATION_CODE_EXPIRED", "Verification code is expired")
-        expected_hash = self._hash_code(email=email, purpose=purpose, code=code)
+        if verification.verification_attempts >= MAX_CODE_ATTEMPTS:
+            raise self._flow_error("VERIFICATION_CODE_ATTEMPTS_EXCEEDED", "Verification code attempts exceeded")
+        expected_hash = self._hash_code(email=email, purpose=purpose, code=self._normalize_code(code))
         if not secrets.compare_digest(verification.code_hash, expected_hash):
             verification.verification_attempts += 1
             await session.commit()
-            if verification.verification_attempts > MAX_CODE_ATTEMPTS:
+            if verification.verification_attempts >= MAX_CODE_ATTEMPTS:
                 raise self._flow_error("VERIFICATION_CODE_ATTEMPTS_EXCEEDED", "Verification code attempts exceeded")
             raise self._flow_error("VERIFICATION_CODE_INVALID", "Verification code is invalid")
         verification.consumed_at = now
@@ -476,6 +488,10 @@ class AccountService:
     def _hash_code(self, *, email: str, purpose: str, code: str) -> str:
         raw = f"{settings.JWT_SECRET}:{purpose}:{email}:{code}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def _normalize_code(self, code: str) -> str:
+        normalized = unicodedata.normalize("NFKC", code)
+        return "".join(character for character in normalized if not character.isspace() and unicodedata.category(character) != "Cf")
 
     def _new_code(self) -> str:
         return f"{secrets.randbelow(1_000_000):06d}"

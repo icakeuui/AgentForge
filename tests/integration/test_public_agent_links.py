@@ -76,6 +76,36 @@ def test_public_agent_square_lists_only_active_publications(client: TestClient):
     assert "team_id" not in records[0]
 
 
+def test_new_agents_keep_existing_config_and_knowledge(client: TestClient):
+    first_id = _create_agent(client, name="Knowledge Quiz Agent")
+    first_document = client.post(
+        f"/agents/{first_id}/knowledge",
+        json={"title": "Quiz facts", "content": "The first agent's private facts."},
+        headers=_auth_headers(),
+    )
+    assert first_document.status_code == 200
+
+    second_id = _create_agent(client, name="Course Agent")
+    third_id = _create_agent(client, name="Another Agent")
+    assert len({first_id, second_id, third_id}) == 3
+
+    second_update = client.patch(
+        f"/agents/{second_id}",
+        json={"description": "Only the second agent changed."},
+        headers=_auth_headers(),
+    )
+    assert second_update.status_code == 200
+    agents = client.get("/agents", headers=_auth_headers()).json()["data"]
+    assert {first_id, second_id, third_id}.issubset({agent["id"] for agent in agents})
+    first = client.get(f"/agents/{first_id}", headers=_auth_headers()).json()["data"]
+    second = client.get(f"/agents/{second_id}", headers=_auth_headers()).json()["data"]
+    assert first["name"] == "Knowledge Quiz Agent"
+    assert first["description"] != second["description"]
+    assert len(client.get(f"/agents/{first_id}/knowledge", headers=_auth_headers()).json()["data"]) == 1
+    assert client.get(f"/agents/{second_id}/knowledge", headers=_auth_headers()).json()["data"] == []
+    assert client.get(f"/agents/{third_id}/knowledge", headers=_auth_headers()).json()["data"] == []
+
+
 def test_publish_agent_creates_public_profile_and_can_be_disabled(client: TestClient):
     agent_id = _create_agent(client)
 
@@ -152,6 +182,27 @@ def test_public_execute_starts_agent_execution_for_active_publication(monkeypatc
     replay = replay_response.json()["data"]
     assert replay["execution_id"] == data["execution_id"]
     assert replay["agent_id"] == agent_id
+
+
+def test_public_visitors_get_distinct_conversation_identity(monkeypatch, client: TestClient):
+    monkeypatch.setattr(competition_manager_service, "check_team_rate_limit", AsyncMock(return_value=LimitStatus.ALLOWED))
+    monkeypatch.setattr(competition_manager_service, "check_team_token_limit", AsyncMock(return_value=LimitStatus.ALLOWED))
+    run_mock = AsyncMock(return_value=None)
+    monkeypatch.setattr(execution_engine, "run", run_mock)
+    agent_id = _create_agent(client, name="Visitor Isolation Agent")
+    client.post(f"/agents/{agent_id}/publish", json={"slug": "visitor-isolation-agent"}, headers=_auth_headers())
+
+    visitors = [client.post("/public/agents/visitor-isolation-agent/conversations").json()["data"] for _ in range(2)]
+    for visitor in visitors:
+        response = client.post(
+            "/public/agents/visitor-isolation-agent/execute",
+            json={"input": "hello", "conversation_id": visitor["conversation_id"]},
+            headers={"X-Public-Conversation-Token": visitor["conversation_token"]},
+        )
+        assert response.status_code == 200
+    contexts = [call.kwargs["auth_context"] for call in run_mock.await_args_list]
+    assert contexts[0].user_id != contexts[1].user_id
+    assert all(context.auth_mode == "public_link" for context in contexts)
 
 
 def test_public_attachment_reaches_execution_without_entering_agent_knowledge(monkeypatch, client: TestClient, tmp_path):

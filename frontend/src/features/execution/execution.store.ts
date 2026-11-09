@@ -12,7 +12,6 @@ import {
 import { getBuiltinToolLabel } from '../tools/tools.catalog'
 
 const CONVERSATION_HISTORY_STORAGE_KEY = 'AGENTFORGE_CONVERSATION_HISTORY_V1'
-const MAX_CONVERSATION_SESSIONS = 12
 const SESSION_TITLE_MAX_LENGTH = 24
 const STOPPED_BY_USER_MESSAGE = '已停止：用户主动停止了当前模型行为。'
 
@@ -145,7 +144,6 @@ function sortConversationSessions(sessions: ConversationSession[]): Conversation
   return sessions
     .slice()
     .sort((left, right) => right.updated_at - left.updated_at || right.created_at - left.created_at)
-    .slice(0, MAX_CONVERSATION_SESSIONS)
 }
 
 function applySession(state: ExecutionStoreState, session: ConversationSession, sessions: ConversationSession[]): ExecutionStoreState {
@@ -460,7 +458,7 @@ export const useExecutionStore = create<ExecutionStoreState>((set, get) => ({
     const hideConversationMessages = get().conversation_messages_hidden
     const clearedExecutionId = get().conversation_cleared_execution_id
 
-    if (currentId !== null && currentId !== data.execution_id) {
+    if (currentId !== data.execution_id) {
       return
     }
     if (get().termination_reason === 'USER_STOPPED') {

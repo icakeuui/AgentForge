@@ -23,7 +23,11 @@ interface AgentStoreState {
   deleteAgent: (agent_id: string) => Promise<void>
   refreshCurrentAgent: () => Promise<void>
   resetCurrentAgent: () => void
+  clearUserContext: () => void
+  beginCreateAgent: () => void
 }
+
+let userContextRevision = 0
 
 function saveRecentAgentId(agentId: string | null): void {
   if (typeof window === 'undefined') {
@@ -60,6 +64,20 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
   is_agent_detail_loading: false,
   agent_context_status: 'EMPTY',
 
+  clearUserContext: () => {
+    ++userContextRevision
+    useExecutionStore.getState().resetExecution()
+    saveRecentAgentId(null)
+    set(() => ({
+      agent_list: [],
+      current_agent_id: null,
+      current_agent_detail: null,
+      is_agent_list_loading: false,
+      is_agent_detail_loading: false,
+      agent_context_status: 'EMPTY',
+    }))
+  },
+
   resetCurrentAgent: () => {
     useExecutionStore.getState().resetExecution()
     saveRecentAgentId(null)
@@ -71,7 +89,12 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     }))
   },
 
+  beginCreateAgent: () => {
+    get().resetCurrentAgent()
+  },
+
   loadAgentList: async () => {
+    const revision = userContextRevision
     set(() => ({
       is_agent_list_loading: true,
       agent_context_status: 'LIST_LOADING',
@@ -79,6 +102,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
 
     try {
       const list = await agentAdapter.fetchAgentList()
+      if (revision !== userContextRevision) return
 
       set(() => ({
         agent_list: list,
@@ -98,6 +122,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
         }))
       }
     } catch (error) {
+      if (revision !== userContextRevision) return
       const apiError = normalizeApiError(error)
       set(() => ({
         agent_list: [],
@@ -207,6 +232,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
   },
 
   refreshCurrentAgent: async () => {
+    const revision = userContextRevision
     const currentAgentId = get().current_agent_id
     if (currentAgentId === null) {
       return
@@ -220,6 +246,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
 
     try {
       const detail = await agentAdapter.fetchAgentDetail(currentAgentId)
+      if (revision !== userContextRevision || get().current_agent_id !== currentAgentId) return
 
       if (detail.id !== currentAgentId) {
         get().resetCurrentAgent()
@@ -252,6 +279,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       }))
       useExecutionStore.getState().setOpeningMessage(detail.id, detail.opening_statement)
     } catch (error) {
+      if (revision !== userContextRevision || get().current_agent_id !== currentAgentId) return
       const apiError = normalizeApiError(error)
       set(() => ({
         is_agent_detail_loading: false,

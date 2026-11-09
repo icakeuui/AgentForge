@@ -1,5 +1,5 @@
 import type { PropsWithChildren } from 'react'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Toaster } from 'sonner'
 
 import { useAuthStore } from '../features/auth/auth.store'
@@ -14,6 +14,7 @@ export function AppProviders({ children }: PropsWithChildren) {
   const authStatus = useAuthStore((state) => state.status)
   const authUserId = useAuthStore((state) => state.user?.user_id ?? null)
   const initializeAuth = useAuthStore((state) => state.initialize)
+  const activeUserIdRef = useRef<string | null>(null)
   const theme = useThemeStore((state) => state.theme)
   useExecutionPolling(currentExecutionId)
 
@@ -23,6 +24,10 @@ export function AppProviders({ children }: PropsWithChildren) {
   }, [initializeAuth])
 
   useEffect(() => {
+    if (activeUserIdRef.current !== authUserId) {
+      useAgentStore.getState().clearUserContext()
+      activeUserIdRef.current = authUserId
+    }
     if (authStatus !== 'authenticated' || authUserId === null) {
       return
     }
@@ -30,6 +35,7 @@ export function AppProviders({ children }: PropsWithChildren) {
     async function initializeAgentRuntimeContext() {
       const store = useAgentStore.getState()
       await store.loadAgentList()
+      if (useAuthStore.getState().user?.user_id !== authUserId) return
 
       const postLoad = useAgentStore.getState()
       if (postLoad.agent_context_status === 'ERROR') {

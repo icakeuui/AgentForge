@@ -207,7 +207,7 @@ function PublicationPanel({ agent }: { agent: AgentDetail | null }) {
       </div>
 
       {agent === null ? (
-        <p className="text-xs leading-relaxed text-text-muted">保存或选择一个智能体后，可以生成外部可访问的聊天链接。</p>
+        <p className="text-xs leading-relaxed text-text-muted">保存或选择一个智能体后，可以生成专属聊天链接。本地地址只可在本机访问。</p>
       ) : (
         <>
           <Input
@@ -223,17 +223,17 @@ function PublicationPanel({ agent }: { agent: AgentDetail | null }) {
               {absolutePublicUrl(publication)}
             </p>
           ) : (
-            <p className="text-xs leading-relaxed text-text-muted">发布后访客可通过链接直接和此智能体对话。</p>
+            <p className="text-xs leading-relaxed text-text-muted">发布后访客可通过链接直接和此智能体对话；分享给其他电脑需要先部署到可访问的服务器。</p>
           )}
           {error ? <p className="text-xs text-red-500">{error}</p> : null}
           <div className="grid grid-cols-2 gap-2">
             <Button type="button" variant="primary" size="sm" leftIcon={isActive ? <Save size={13} /> : <Power size={13} />} onClick={() => void publish()} disabled={isLoading || isSaving}>
               {isSaving ? '处理中' : isActive ? '更新' : '发布'}
             </Button>
-            <Button type="button" variant="secondary" size="sm" leftIcon={<Copy size={13} />} onClick={() => void copyLink()} disabled={!publication}>
+            <Button type="button" variant="secondary" size="sm" leftIcon={<Copy size={13} />} onClick={() => void copyLink()} disabled={!isActive}>
               复制
             </Button>
-            <Button type="button" variant="secondary" size="sm" leftIcon={<ExternalLink size={13} />} onClick={openLink} disabled={!publication}>
+            <Button type="button" variant="secondary" size="sm" leftIcon={<ExternalLink size={13} />} onClick={openLink} disabled={!isActive}>
               打开
             </Button>
             <Button type="button" variant="ghost" size="sm" onClick={() => void disable()} disabled={!publication || !isActive || isSaving}>
@@ -256,11 +256,12 @@ export function AgentConfigTabPage() {
   const activeTab = tabs.find((tab) => tab.id === activeTabId)
   const requestedMode = readMode(activeTab?.params)
   const requestedAgentId = readAgentId(activeTab?.params)
+  const createNonce = activeTab?.params?.createNonce ?? ''
   const targetId = requestedAgentId ?? currentAgentDetail?.id ?? currentAgentId
   const targetAgent =
     targetId === currentAgentDetail?.id ? currentAgentDetail : agentList.find((agent) => agent.id === targetId) ?? null
   const initialMode: ConfigMode = requestedMode === 'create' || targetAgent === null ? 'create' : 'edit'
-  const editorKey = `${initialMode}:${targetAgent?.id ?? 'new'}:${requestedMode ?? 'auto'}:${requestedAgentId ?? 'current'}`
+  const editorKey = `${initialMode}:${targetAgent?.id ?? 'new'}:${requestedMode ?? 'auto'}:${requestedAgentId ?? 'current'}:${createNonce}`
 
   return <AgentConfigEditor key={editorKey} initialMode={initialMode} initialAgent={initialMode === 'edit' ? targetAgent : null} />
 }
@@ -350,6 +351,8 @@ function AgentConfigEditor({ initialMode, initialAgent }: AgentConfigEditorProps
   }
 
   const startCreate = () => {
+    useAgentStore.getState().beginCreateAgent()
+    clearAgentConfigDraft()
     const draft = ensureCreateAgentConfigDraft()
     setConfigMode('create')
     setEditingAgentId(null)

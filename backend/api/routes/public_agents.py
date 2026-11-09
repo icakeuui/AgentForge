@@ -161,7 +161,7 @@ async def execute_public_agent(
     request_id = get_request_id()
     execution_id = uuid.uuid4()
     auth = AuthContext(
-        user_id=f"public:{request.conversation_id or publication.slug}",
+        user_id=f"public:{request.conversation_id or execution_id}",
         team_id=team_id,
         auth_mode="public_link",
         request_id=request_id,

@@ -2,7 +2,7 @@ import { AlertTriangle, Archive, Clock, FolderKanban, MessageSquare, MoreHorizon
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
-import { AGENT_CONFIG_DRAFT_EVENT, ensureCreateAgentConfigDraft, readAgentConfigDraft } from '../../../features/agent/agentConfigDraft'
+import { AGENT_CONFIG_DRAFT_EVENT, clearAgentConfigDraft, ensureCreateAgentConfigDraft, readAgentConfigDraft } from '../../../features/agent/agentConfigDraft'
 import { useAgentStore } from '../../../features/agent/agent.store'
 import { notify } from '../../../features/notifications/notify'
 import { useBuilderTabsStore } from '../../../features/ui-shell/builderTabs.store'
@@ -164,13 +164,15 @@ export function WorkspaceRail() {
 
   const openAgentConfigTab = (mode: 'create' | 'edit', agentId?: string) => {
     if (mode === 'create') {
+      useAgentStore.getState().beginCreateAgent()
+      clearAgentConfigDraft()
       const draft = ensureCreateAgentConfigDraft()
       setHasCreateDraft(true)
       setCreateDraftName(draft.name.trim())
     }
     openBuilderTab({
       type: 'agent_config',
-      params: mode === 'edit' ? { mode, agentId: agentId ?? currentAgentId } : { mode },
+      params: mode === 'edit' ? { mode, agentId: agentId ?? currentAgentId } : { mode, createNonce: Date.now() },
       status: mode === 'edit' ? 'ready' : 'idle',
       message: mode === 'edit' ? '正在编辑智能体' : '准备创建智能体',
     })

@@ -438,6 +438,7 @@ export const executionAdapter = {
       store.createConversationSession(agent_id, agentStore.current_agent_detail?.opening_statement ?? null)
       store = useExecutionStore.getState()
     }
+    const conversationId = store.active_conversation_id
 
     const conversationHistory = buildConversationHistory(store.conversation_messages)
     const userMessage = createUserConversationMessage(
@@ -466,7 +467,8 @@ export const executionAdapter = {
     }))
 
     startExecutionController?.abort()
-    startExecutionController = new AbortController()
+    const controller = new AbortController()
+    startExecutionController = controller
 
     try {
       const result = await apiClient.request<ExecuteResponse>(`/agents/${agent_id}/execute`, {
@@ -476,10 +478,11 @@ export const executionAdapter = {
           conversation_history: conversationHistory,
           confirmed_tool_actions: confirmedToolActions,
         } satisfies ExecuteRequest,
-        signal: startExecutionController.signal,
+        signal: controller.signal,
         authMode: 'required',
       })
-      startExecutionController = null
+      if (startExecutionController === controller) startExecutionController = null
+      if (useAgentStore.getState().current_agent_id !== agent_id || useExecutionStore.getState().active_conversation_id !== conversationId) return null
       const executionId = asExecutionId(result.data.execution_id)
       const messagesWithExecutionId = useExecutionStore.getState().conversation_messages.map((message) =>
         message.id === userMessage.id ? { ...message, execution_id: executionId } : message,
@@ -509,7 +512,8 @@ export const executionAdapter = {
         execution_id: executionId,
       }
     } catch (error) {
-      startExecutionController = null
+      if (startExecutionController === controller) startExecutionController = null
+      if (useAgentStore.getState().current_agent_id !== agent_id || useExecutionStore.getState().active_conversation_id !== conversationId) return null
       if (error instanceof DOMException && error.name === 'AbortError') {
         return null
       }

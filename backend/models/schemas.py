@@ -35,6 +35,8 @@ class AuthContext(BaseModel):
     search_id: Optional[int] = None
     email: Optional[str] = None
     email_verified: bool = False
+    password_version: Optional[str] = None
+    token_issued_at: Optional[int] = None
 
 
 class AuthUserProfile(BaseModel):

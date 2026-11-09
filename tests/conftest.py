@@ -15,6 +15,8 @@ import backend.services.model_gateway as model_gateway
 import backend.services.competition_manager_service as comp_service
 import backend.services.authorization_service as authz_service
 import backend.services.langgraph_execution_strategy as langgraph_strategy
+import backend.services.marketplace_tool_adapter as marketplace_adapter_module
+from plugin_marketplace.db import Base as MarketplaceBase
 from backend.models.orm import Team, TeamQuota, TeamMember
 
 # Prefer a deterministic local sqlite test DB to avoid external role/config dependencies.
@@ -36,6 +38,7 @@ model_gateway.AsyncSessionLocal = TestingSessionLocal
 comp_service.AsyncSessionLocal = TestingSessionLocal
 authz_service.AsyncSessionLocal = TestingSessionLocal
 langgraph_strategy.AsyncSessionLocal = TestingSessionLocal
+marketplace_adapter_module.AsyncSessionLocal = TestingSessionLocal
 
 # Test constants
 TEST_TEAM_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
@@ -54,8 +57,11 @@ app.dependency_overrides[get_db] = override_get_db
 async def setup_database():
     try:
         async with test_engine.begin() as conn:
+            await conn.run_sync(MarketplaceBase.metadata.drop_all)
             await conn.run_sync(Base.metadata.drop_all)
             await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(MarketplaceBase.metadata.create_all)
+        marketplace_adapter_module.marketplace_tool_adapter._marketplace_api = None
         
         # Seed mandatory test data
         async with TestingSessionLocal() as session:
@@ -94,6 +100,7 @@ async def setup_database():
     finally:
         try:
             async with test_engine.begin() as conn:
+                await conn.run_sync(MarketplaceBase.metadata.drop_all)
                 await conn.run_sync(Base.metadata.drop_all)
         except Exception:
             pass

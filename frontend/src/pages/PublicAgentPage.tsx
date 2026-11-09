@@ -145,13 +145,13 @@ export function PublicAgentPage() {
       let conversation = conversationRef.current
       const attachmentIds: string[] = []
       const messageAttachments: MessageAttachment[] = []
+      if (!conversation) {
+        conversation = await publicAgentAdapter.createConversation(normalizedSlug)
+        if (activeSlugRef.current !== normalizedSlug) return
+        conversationRef.current = conversation
+      }
       if (selectedFiles.length > 0) {
         setIsUploading(true)
-        if (!conversation) {
-          conversation = await publicAgentAdapter.createConversation(normalizedSlug)
-          if (activeSlugRef.current !== normalizedSlug) return
-          conversationRef.current = conversation
-        }
         for (const selected of selectedFiles) {
           const uploaded = await publicAgentAdapter.uploadAttachment(normalizedSlug, conversation, selected.file)
           if (activeSlugRef.current !== normalizedSlug) return

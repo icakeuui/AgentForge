@@ -152,13 +152,13 @@ function AvatarUploader({
   const [previewUrl, setPreviewUrl] = useState(() => value)
   const [uploading, setUploading] = useState(false)
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
       mountedRef.current = false
       onUploadingChange?.(false)
-    },
-    [onUploadingChange],
-  )
+    }
+  }, [onUploadingChange])
 
   const setAvatarUploading = (nextUploading: boolean) => {
     setUploading(nextUploading)
@@ -169,8 +169,8 @@ function AvatarUploader({
     const file = event.target.files?.[0] ?? null
     event.target.value = ''
     if (!file) return
-    if (!file.type.startsWith('image/')) {
-      notify.error('请选择图片文件')
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      notify.error('请选择 PNG、JPG 或 JPEG 图片')
       return
     }
     if (file.size > maxAvatarUploadSize) {
@@ -218,7 +218,7 @@ function AvatarUploader({
             {uploading ? <Loader2 size={16} className="animate-spin" /> : <Plus size={17} />}
           </span>
         </button>
-        <input ref={inputRef} id="register-avatar-upload" type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} disabled={disabled || uploading} />
+        <input ref={inputRef} id="register-avatar-upload" type="file" accept="image/png,image/jpeg" className="hidden" onChange={handleAvatarChange} disabled={disabled || uploading} />
       </div>
     </div>
   )
@@ -300,6 +300,7 @@ export function RegisterPage() {
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [retryAfter, setRetryAfter] = useState(0)
   const [submitting, setSubmitting] = useState(false)
+  const registrationRequestInFlightRef = useRef(false)
 
   useEffect(() => {
     if (retryAfter <= 0) return
@@ -339,9 +340,13 @@ export function RegisterPage() {
 
   const sendCode = async (event?: FormEvent) => {
     event?.preventDefault()
+    if (registrationRequestInFlightRef.current) return
+    registrationRequestInFlightRef.current = true
     setSubmitting(true)
     try {
       const response = await authAdapter.registerStart({ email })
+      setCode('')
+      setRegistrationToken('')
       setRetryAfter(response.retry_after_seconds)
       setStep('code')
     } catch (error) {
@@ -349,20 +354,24 @@ export function RegisterPage() {
       if (retry !== null) setRetryAfter(retry)
       notify.error(errorMessage(error))
     } finally {
+      registrationRequestInFlightRef.current = false
       setSubmitting(false)
     }
   }
 
   const verifyCode = async (event: FormEvent) => {
     event.preventDefault()
+    if (registrationRequestInFlightRef.current) return
+    registrationRequestInFlightRef.current = true
     setSubmitting(true)
     try {
-      const verified = await authAdapter.registerVerify({ email, code })
+      const verified = await authAdapter.registerVerify({ email, code: code.trim() })
       setRegistrationToken(verified.registration_token)
       setStep('password')
     } catch (error) {
       notify.error(errorMessage(error))
     } finally {
+      registrationRequestInFlightRef.current = false
       setSubmitting(false)
     }
   }
@@ -378,6 +387,8 @@ export function RegisterPage() {
 
   const completeRegistration = async (event: FormEvent) => {
     event.preventDefault()
+    if (registrationRequestInFlightRef.current) return
+    registrationRequestInFlightRef.current = true
     setSubmitting(true)
     try {
       await registerComplete({
@@ -392,6 +403,7 @@ export function RegisterPage() {
     } catch (error) {
       notify.error(errorMessage(error))
     } finally {
+      registrationRequestInFlightRef.current = false
       setSubmitting(false)
     }
   }
@@ -412,8 +424,8 @@ export function RegisterPage() {
 
         {step === 'code' && (
           <form className="space-y-4" onSubmit={verifyCode}>
-            <Input id="verify-email" label="邮箱" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-            <Input id="verify-code" label="验证码" autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value)} required />
+            <Input id="verify-email" label="邮箱" type="email" autoComplete="email" value={email} readOnly required />
+            <Input id="verify-code" label="验证码" autoComplete="one-time-code" inputMode="numeric" value={code} onChange={(event) => setCode(event.target.value)} required />
             <div className="flex items-center justify-between text-sm">
               <button type="button" className="text-primary hover:underline disabled:text-text-muted" disabled={submitting || retryAfter > 0} onClick={() => void sendCode()}>
                 {retryAfter > 0 ? `${retryAfter} 秒后重新发送` : '重新发送验证码'}
@@ -535,6 +547,10 @@ export function ResetPasswordPage() {
     setSubmitting(true)
     try {
       await authAdapter.resetPassword({ email, code, new_password: password })
+      const currentUser = useAuthStore.getState().user
+      if (currentUser?.email.trim().toLowerCase() === email.trim().toLowerCase()) {
+        useAuthStore.getState().clearSession()
+      }
       notify.success('密码已更新')
       navigate('/login', { replace: true })
     } catch (error) {

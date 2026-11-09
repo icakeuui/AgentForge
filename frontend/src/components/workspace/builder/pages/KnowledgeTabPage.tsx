@@ -81,11 +81,12 @@ export function KnowledgeTabPage() {
   async function loadDocuments(agentId: string) {
     setIsLoading(true)
     try {
-      setDocuments(await knowledgeAdapter.listDocuments(agentId))
+      const nextDocuments = await knowledgeAdapter.listDocuments(agentId)
+      if (useAgentStore.getState().current_agent_id === agentId) setDocuments(nextDocuments)
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '知识库加载失败')
     } finally {
-      setIsLoading(false)
+      if (useAgentStore.getState().current_agent_id === agentId) setIsLoading(false)
     }
   }
 
@@ -93,6 +94,12 @@ export function KnowledgeTabPage() {
     const timer = window.setTimeout(() => {
       setDocuments([])
       setSearchResults([])
+      setTitle('')
+      setContent('')
+      setFileTitle('')
+      setSelectedFile(null)
+      setQuery('')
+      setIsLoading(false)
       if (currentAgentId !== null) {
         void loadDocuments(currentAgentId)
       }
@@ -108,6 +115,7 @@ export function KnowledgeTabPage() {
         title: title.trim(),
         content: content.trim(),
       })
+      if (useAgentStore.getState().current_agent_id !== currentAgentId) return
       setDocuments((prev) => [created, ...prev])
       setTitle('')
       setContent('')
@@ -127,6 +135,7 @@ export function KnowledgeTabPage() {
         file: selectedFile,
         title: fileTitle.trim().length > 0 ? fileTitle.trim() : undefined,
       })
+      if (useAgentStore.getState().current_agent_id !== currentAgentId) return
       setDocuments((prev) => [created, ...prev])
       setSelectedFile(null)
       setFileTitle('')
@@ -193,7 +202,8 @@ export function KnowledgeTabPage() {
     if (!canSearch || currentAgentId === null) return
     setIsSearching(true)
     try {
-      setSearchResults(await knowledgeAdapter.search(currentAgentId, { query: query.trim(), limit: 5 }))
+      const results = await knowledgeAdapter.search(currentAgentId, { query: query.trim(), limit: 5 })
+      if (useAgentStore.getState().current_agent_id === currentAgentId) setSearchResults(results)
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '知识检索失败')
     } finally {

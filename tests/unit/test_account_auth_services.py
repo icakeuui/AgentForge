@@ -12,6 +12,7 @@ from backend.core.config import settings
 from backend.core.database import Base
 from backend.core.exceptions import AuthException, FlowException
 from backend.models.orm import EmailVerificationCode, RefreshToken, TeamMember, User, UserCredential
+from backend.models.schemas import AuthContext
 from backend.services.account_service import account_service
 from backend.services.email_service import EmailDeliveryError, email_service
 from backend.services.password_service import password_service
@@ -183,7 +184,7 @@ async def test_verification_attempts_are_capped(monkeypatch):
             _, _, dev_code = await account_service.start_registration(session, email="attempts@example.com")
             assert dev_code is not None
 
-        for attempt in range(5):
+        for attempt in range(4):
             async with session_factory() as session:
                 with pytest.raises(FlowException) as exc_info:
                     await account_service.verify_registration(session, email="attempts@example.com", code="000000")
@@ -192,6 +193,11 @@ async def test_verification_attempts_are_capped(monkeypatch):
         async with session_factory() as session:
             with pytest.raises(FlowException) as exc_info:
                 await account_service.verify_registration(session, email="attempts@example.com", code="000000")
+            assert exc_info.value.data["error_code"] == "VERIFICATION_CODE_ATTEMPTS_EXCEEDED"
+
+        async with session_factory() as session:
+            with pytest.raises(FlowException) as exc_info:
+                await account_service.verify_registration(session, email="attempts@example.com", code=dev_code or "")
             assert exc_info.value.data["error_code"] == "VERIFICATION_CODE_ATTEMPTS_EXCEEDED"
     finally:
         await engine.dispose()
@@ -437,12 +443,28 @@ async def test_complete_registration_login_and_refresh_jwt_v2(monkeypatch):
             assert token_pair.user.role == "owner"
 
         async with session_factory() as session:
+            updated = await account_service.update_profile(
+                session,
+                AuthContext(user_id=token_pair.user.user_id, team_id=token_pair.user.team_id, auth_mode="jwt", request_id="avatar-test"),
+                avatar_url="https://example.com/new-avatar.png",
+                update_avatar=True,
+            )
+            assert updated.avatar_url == "https://example.com/new-avatar.png"
+            assert updated.display_name == "Alice"
+            assert updated.email == "alice@example.com"
+            assert updated.search_id == token_pair.user.search_id
+            assert updated.team_id == token_pair.user.team_id
+            assert len((await session.execute(select(User))).scalars().all()) == 1
+
+        async with session_factory() as session:
             login_pair = await account_service.login(session, email="alice@example.com", password="abc123")
             assert login_pair.user.user_id == token_pair.user.user_id
+            assert login_pair.user.avatar_url == "https://example.com/new-avatar.png"
 
         async with session_factory() as session:
             refreshed = await account_service.refresh(session, refresh_token=token_pair.refresh_token)
             assert refreshed.refresh_token != token_pair.refresh_token
+            assert refreshed.user.avatar_url == "https://example.com/new-avatar.png"
             token_record = (await session.execute(select(RefreshToken))).scalars().all()
             assert len(token_record) >= 2
     finally:

@@ -5,6 +5,7 @@ import * as authAdapter from './auth.adapter'
 
 const ACCESS_TOKEN_KEY = 'auth_token'
 const REFRESH_TOKEN_KEY = 'auth_refresh_token'
+let sessionRevision = 0
 
 function readToken(key: string): string | null {
   if (typeof window === 'undefined') {
@@ -55,22 +56,24 @@ export const useAuthStore = create<AuthStoreState>((set) => ({
   user: null,
 
   initialize: async () => {
+    const revision = ++sessionRevision
     const accessToken = readToken(ACCESS_TOKEN_KEY)
     const refreshToken = readToken(REFRESH_TOKEN_KEY)
 
     if (!accessToken && !refreshToken) {
-      set(() => ({ status: 'guest', user: null }))
+      if (revision === sessionRevision) set(() => ({ status: 'guest', user: null }))
       return
     }
 
     try {
       const user = await authAdapter.getSession()
-      set(() => ({ status: 'authenticated', user }))
+      if (revision === sessionRevision) set(() => ({ status: 'authenticated', user }))
       return
     } catch {
       if (refreshToken) {
         try {
           const refreshed = await authAdapter.refresh(refreshToken)
+          if (revision !== sessionRevision) return
           setSessionTokens(refreshed)
           set(() => ({ status: 'authenticated', user: refreshed.user }))
           return
@@ -82,25 +85,34 @@ export const useAuthStore = create<AuthStoreState>((set) => ({
         }
       }
 
-      clearSessionTokens()
-      set(() => ({ status: 'guest', user: null }))
+      if (revision === sessionRevision) {
+        clearSessionTokens()
+        set(() => ({ status: 'guest', user: null }))
+      }
     }
   },
 
   login: async (email: string, password: string) => {
+    const revision = ++sessionRevision
     const pair = await authAdapter.login({ email, password })
+    if (revision !== sessionRevision) return
     setSessionTokens(pair)
     set(() => ({ status: 'authenticated', user: pair.user }))
   },
 
   registerComplete: async (payload: authAdapter.RegisterCompletePayload) => {
+    const revision = ++sessionRevision
     const pair = await authAdapter.registerComplete(payload)
+    if (revision !== sessionRevision) return
     setSessionTokens(pair)
     set(() => ({ status: 'authenticated', user: pair.user }))
   },
 
   logout: async () => {
+    ++sessionRevision
     const refreshToken = readToken(REFRESH_TOKEN_KEY)
+    clearSessionTokens()
+    set(() => ({ status: 'guest', user: null }))
     if (refreshToken) {
       try {
         await authAdapter.logout(refreshToken)
@@ -108,26 +120,28 @@ export const useAuthStore = create<AuthStoreState>((set) => ({
         // Best effort revoke.
       }
     }
-    clearSessionTokens()
-    set(() => ({ status: 'guest', user: null }))
   },
 
   updateProfile: async (payload) => {
+    const revision = ++sessionRevision
     const user = await authAdapter.updateProfile(payload)
-    set(() => ({ status: 'authenticated', user }))
+    if (revision === sessionRevision) set(() => ({ status: 'authenticated', user }))
   },
 
   refresh: async () => {
+    const revision = ++sessionRevision
     const refreshToken = readToken(REFRESH_TOKEN_KEY)
     if (!refreshToken) {
       return false
     }
     try {
       const pair = await authAdapter.refresh(refreshToken)
+      if (revision !== sessionRevision) return false
       setSessionTokens(pair)
       set(() => ({ status: 'authenticated', user: pair.user }))
       return true
     } catch {
+      if (revision !== sessionRevision) return false
       clearSessionTokens()
       set(() => ({ status: 'guest', user: null }))
       return false
@@ -135,11 +149,13 @@ export const useAuthStore = create<AuthStoreState>((set) => ({
   },
 
   setTokens: (pair) => {
+    ++sessionRevision
     setSessionTokens(pair)
     set(() => ({ status: 'authenticated', user: pair.user }))
   },
 
   clearSession: () => {
+    ++sessionRevision
     clearSessionTokens()
     set(() => ({ status: 'guest', user: null }))
   },

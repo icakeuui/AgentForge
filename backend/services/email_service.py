@@ -61,9 +61,15 @@ class EmailService:
         subject = "AgentForge email verification"
         if purpose == "reset_password":
             subject = "AgentForge password reset"
+        ttl_seconds = (
+            settings.PASSWORD_RESET_CODE_TTL_SECONDS
+            if purpose == "reset_password"
+            else settings.EMAIL_VERIFICATION_CODE_TTL_SECONDS
+        )
+        expiry_text = f"{ttl_seconds // 60} minutes" if ttl_seconds % 60 == 0 else f"{ttl_seconds} seconds"
         body = (
             f"Your AgentForge verification code is: {code}\n\n"
-            f"This code expires in a few minutes. If you did not request it, you can ignore this email."
+            f"This code expires in {expiry_text}. If you did not request it, you can ignore this email."
         )
         return await self.send_email(
             to_email=to_email,

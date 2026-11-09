@@ -1,13 +1,16 @@
+import hashlib
+import secrets
 import uuid
+from datetime import timezone
 from typing import Optional
 
 from sqlalchemy import select
 
 from backend.core.database import AsyncSessionLocal
-from backend.core.exceptions import PermissionException
+from backend.core.exceptions import AuthException, PermissionException
 from backend.core.logging import logger
 from backend.models.constants import ResponseCode
-from backend.models.orm import AgentOwnership, ExecutionLog, Team, TeamMember
+from backend.models.orm import AgentOwnership, ExecutionLog, Team, TeamMember, UserCredential
 from backend.models.schemas import AuthContext
 from plugin_marketplace.db import PMUserExtension
 
@@ -31,6 +34,18 @@ class AuthorizationService:
                 self._deny("membership", auth, f"Team not active: {auth.team_id}")
 
             await self._ensure_user_membership(session, team_uuid, auth.user_id, auth, "membership")
+            credential = await session.get(UserCredential, auth.user_id)
+            if credential is not None:
+                if auth.password_version is not None:
+                    expected = hashlib.sha256(credential.password_hash.encode("utf-8")).hexdigest()
+                    if not secrets.compare_digest(auth.password_version, expected):
+                        raise AuthException("Token invalidated by password change", code=ResponseCode.TOKEN_INVALID)
+                elif auth.token_issued_at is not None:
+                    updated_at = credential.password_updated_at
+                    if updated_at.tzinfo is None:
+                        updated_at = updated_at.replace(tzinfo=timezone.utc)
+                    if auth.token_issued_at + 1 < updated_at.timestamp():
+                        raise AuthException("Token invalidated by password change", code=ResponseCode.TOKEN_INVALID)
 
     async def ensure_team_scope(self, auth: AuthContext, target_team_id: str, resource_type: str) -> None:
         if auth.team_id != target_team_id:

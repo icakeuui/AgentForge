@@ -78,7 +78,9 @@ export const useBuilderTabsStore = create<BuilderTabsState>((set, get) => ({
     if (!input.forceNew && meta.singleton) {
       const existing = state.tabs.find((tab) => tab.type === input.type)
       if (existing) {
-        const mergedParams = input.params ? { ...(existing.params ?? {}), ...input.params } : existing.params
+        const mergedParams = input.type === 'agent_config' && input.params
+          ? input.params
+          : input.params ? { ...(existing.params ?? {}), ...input.params } : existing.params
         set((prev) => ({
           tabs: prev.tabs.map((tab) =>
             tab.id === existing.id

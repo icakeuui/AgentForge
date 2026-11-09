@@ -81,12 +81,22 @@ class ApiClient {
           ? (options.body as FormData)
           : JSON.stringify(options.body)
 
-    const response = await fetch(url, {
-      method,
-      headers,
-      body: requestBody,
-      signal: options.signal,
-    })
+    let response: Response
+    try {
+      response = await fetch(url, {
+        method,
+        headers,
+        body: requestBody,
+        signal: options.signal,
+      })
+    } catch (error) {
+      if (options.signal?.aborted) throw error
+      throw new ApiError({
+        code: 'BACKEND_UNREACHABLE',
+        message: '无法连接后端服务，请检查服务是否正在运行',
+        raw: error,
+      })
+    }
 
     let rawResponse: unknown = null
 

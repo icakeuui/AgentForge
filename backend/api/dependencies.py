@@ -77,6 +77,8 @@ async def resolve_auth_context(
     search_id_raw = payload.get("search_id")
     email = payload.get("email")
     email_verified = bool(payload.get("email_verified", False))
+    password_version = payload.get("pwd_ver")
+    token_issued_at = payload.get("iat")
 
     if not user_id or not team_id:
         logger.bind(
@@ -96,6 +98,8 @@ async def resolve_auth_context(
         search_id=int(search_id_raw) if isinstance(search_id_raw, int) or (isinstance(search_id_raw, str) and search_id_raw.isdigit()) else None,
         email=str(email) if isinstance(email, str) else None,
         email_verified=email_verified,
+        password_version=password_version if isinstance(password_version, str) else None,
+        token_issued_at=token_issued_at if isinstance(token_issued_at, int) else None,
     )
     set_user_id(auth.user_id)
     set_team_id(auth.team_id)

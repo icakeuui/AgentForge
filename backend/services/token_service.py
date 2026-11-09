@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.config import settings
-from backend.models.orm import RefreshToken, TeamMember, User
+from backend.models.orm import RefreshToken, TeamMember, User, UserCredential
 from backend.models.schemas import AuthUserProfile, TokenPairResponse
 
 
@@ -17,7 +17,7 @@ class TokenService:
     def _hash_refresh_token(self, token: str) -> str:
         return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
-    def create_access_token(self, *, user: User, team_member: TeamMember) -> str:
+    def create_access_token(self, *, user: User, team_member: TeamMember, password_hash: str | None = None) -> str:
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=settings.ACCESS_TOKEN_TTL_SECONDS)
         payload = {
             "ver": 2,
@@ -31,9 +31,12 @@ class TokenService:
             "exp": int(expires_at.timestamp()),
             "iat": int(datetime.now(timezone.utc).timestamp()),
         }
+        if password_hash is not None:
+            payload["pwd_ver"] = hashlib.sha256(password_hash.encode("utf-8")).hexdigest()
         return jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
 
     async def issue_token_pair(self, session: AsyncSession, *, user: User, team_member: TeamMember) -> TokenPairResponse:
+        credential = await session.get(UserCredential, user.user_id)
         refresh_token = secrets.token_urlsafe(48)
         refresh_record = RefreshToken(
             user_id=user.user_id,
@@ -43,7 +46,11 @@ class TokenService:
         session.add(refresh_record)
         await session.flush()
         return TokenPairResponse(
-            access_token=self.create_access_token(user=user, team_member=team_member),
+            access_token=self.create_access_token(
+                user=user,
+                team_member=team_member,
+                password_hash=credential.password_hash if credential is not None else None,
+            ),
             refresh_token=refresh_token,
             token_type="bearer",
             expires_in_seconds=settings.ACCESS_TOKEN_TTL_SECONDS,
