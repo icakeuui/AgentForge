@@ -3,7 +3,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY requirements.txt ./
+RUN pip install --no-cache-dir torch==2.11.0 --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
+RUN python -c "import torch; assert torch.version.cuda is None, 'CPU-only PyTorch required'"
 RUN pip install --no-cache-dir qdrant-client==1.12.1
 COPY backend ./backend
 COPY plugin_marketplace ./plugin_marketplace
