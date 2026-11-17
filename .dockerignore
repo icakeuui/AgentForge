@@ -22,11 +22,14 @@
 **/qdrant_data
 **/qdrant_storage
 **/model-cache
-**/models
 **/uploads
 **/logs
 **/outputs
 **/artifacts
+**/models/**/pytorch_model*.bin
+**/models/**/*.safetensors
+**/models/**/*.gguf
+**/models/**/*.onnx
 **/*.bak
 **/*.tmp
 frontend/.tmp-learning-build
