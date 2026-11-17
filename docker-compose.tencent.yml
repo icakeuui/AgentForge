@@ -1,0 +1,77 @@
+services:
+  frontend:
+    image: ghcr.io/icakeuui/agentforge-frontend:${IMAGE_TAG:?Set IMAGE_TAG to a published sha tag}
+    ports:
+      - "${APP_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  backend:
+    image: ghcr.io/icakeuui/agentforge-backend:${IMAGE_TAG:?Set IMAGE_TAG to a published sha tag}
+    environment:
+      ENV: production
+      DB_URL: sqlite+aiosqlite:////app/data/agentforge.db
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env.docker}
+      AGENT_CONFIG_SECRET: ${AGENT_CONFIG_SECRET:?Set AGENT_CONFIG_SECRET in .env.docker}
+      AUTH_DEV_BYPASS_ENABLED: "false"
+      EMAIL_DELIVERY_MODE: smtp
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-AgentForge}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openai/gpt-4o-mini}
+      AVATAR_PUBLIC_BASE_URL: ${AVATAR_PUBLIC_BASE_URL:-}
+      HF_HOME: /app/model-cache
+    volumes:
+      - agentforge_data:/app/data
+      - agentforge_uploads:/app/uploads
+      - agentforge_sessions:/app/.tmp/public_conversations
+      - agentforge_models:/app/model-cache
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - agentforge_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.6
+    volumes:
+      - agentforge_qdrant:/qdrant/storage
+    restart: unless-stopped
+
+volumes:
+  agentforge_data:
+  agentforge_uploads:
+  agentforge_sessions:
+  agentforge_models:
+  agentforge_redis:
+  agentforge_qdrant:

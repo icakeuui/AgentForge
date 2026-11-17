@@ -1,0 +1,71 @@
+name: Publish AgentForge images
+
+on:
+  push:
+    branches:
+      - wip/tencent-deploy-20261117
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'plugin_marketplace/**'
+      - 'requirements.txt'
+      - '.dockerignore'
+      - 'frontend/.dockerignore'
+      - 'docker-compose.yml'
+      - '.github/workflows/publish-ghcr.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  FRONTEND_IMAGE: ghcr.io/icakeuui/agentforge-frontend
+  BACKEND_IMAGE: ghcr.io/icakeuui/agentforge-backend
+
+jobs:
+  publish-frontend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/icakeuui/agentforge-frontend:sha-${{ github.sha }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+
+  publish-backend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./backend/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/icakeuui/agentforge-backend:sha-${{ github.sha }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}

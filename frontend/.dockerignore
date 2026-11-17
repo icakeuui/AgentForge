@@ -1,5 +1,10 @@
-node_modules
-dist
+node_modules/
+dist/
+.tmp/
+.tmp-learning-build/
 .env
 .env.*
+!.env.example
 *.log
+coverage/
+.git/
