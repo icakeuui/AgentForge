@@ -26,7 +26,7 @@ from backend.core import database as core_db
 from backend.core.exceptions import AgentForgeBaseException
 from backend.core.logging import logger, setup_logging
 from backend.core.tool_runtime import ToolRegistry
-from backend.core.tools import CalculateTool, EchoTool, PythonAddTool, PythonExecutorTool, WebSearchTool
+from backend.core.tools import CalculateTool, EchoTool, PythonAddTool, PythonExecutorTool
 from backend.models.constants import ResponseCode
 from backend.models.schemas import BaseResponse
 from backend.services.marketplace_tool_adapter import marketplace_tool_adapter
@@ -58,7 +58,6 @@ async def lifespan(app: FastAPI):
         registry.register(PythonAddTool())
         registry.register(PythonExecutorTool())
         registry.register(CalculateTool())
-        registry.register(WebSearchTool())
         registry.lock()
         app.state.tool_registry = registry
         logger.info("Tool registry locked.")

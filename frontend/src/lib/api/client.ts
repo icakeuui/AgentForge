@@ -100,6 +100,14 @@ class ApiClient {
 
     let rawResponse: unknown = null
 
+    if (response.status === 413) {
+      throw new ApiError({
+        code: 'PAYLOAD_TOO_LARGE',
+        message: '上传文件过大，请选择 100MB 以内的文件',
+        raw: { status: response.status, path },
+      })
+    }
+
     try {
       rawResponse = (await response.json()) as RawApiEnvelope<T>
     } catch (error) {

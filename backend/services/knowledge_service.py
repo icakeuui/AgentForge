@@ -1,14 +1,18 @@
 import hashlib
 import re
+import subprocess
+import tempfile
 import uuid
 from io import BytesIO
 from datetime import timezone
+from pathlib import Path
 from typing import Any, Dict, List
 from zipfile import BadZipFile
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.logging import logger
 from backend.models.orm import KnowledgeChunk, KnowledgeDocument
 from backend.models.schemas import KnowledgeDocumentRead, KnowledgeSearchResult
 from backend.services.knowledge_parser import knowledge_parser
@@ -172,6 +176,7 @@ class KnowledgeService:
         content: str,
         source_filename: str | None = None,
         source_mime_type: str | None = None,
+        indexing: bool = False,
     ) -> KnowledgeDocumentRead:
         document = KnowledgeDocument(
             id=uuid.uuid4(),
@@ -183,7 +188,7 @@ class KnowledgeService:
             source_filename=source_filename,
             source_mime_type=source_mime_type,
             source_hash=hashlib.sha256(content.strip().encode("utf-8")).hexdigest(),
-            status="ACTIVE",
+            status="PROCESSING" if indexing else "ACTIVE",
         )
         db.add(document)
         await db.flush()
@@ -219,6 +224,40 @@ class KnowledgeService:
                     chunk_metadata=chunk.metadata,
                 )
             )
+        await db.commit()
+        await db.refresh(document)
+        return self._read_model(document, chunk_count=len(parsed_chunks))
+
+    async def populate_staged_document(
+        self, db: AsyncSession, *, document: KnowledgeDocument, content: str,
+    ) -> KnowledgeDocumentRead:
+        """Finish a queued upload without replacing its durable document row."""
+        if document.chunk_count or document.content.strip():
+            raise ValueError("Staged document has already been parsed")
+        document.content = content.strip()
+        document.document_type = self._infer_document_type(title=document.title, content=document.content)
+        parsed_chunks = knowledge_parser.parse(title=document.title, content=document.content)
+        if not parsed_chunks:
+            raise ValueError("Document has no searchable text")
+        document.chunk_count = len(parsed_chunks)
+        document.document_metadata = {
+            **(document.document_metadata or {}),
+            "article_count": len({chunk.article_no for chunk in parsed_chunks if chunk.article_no}),
+            "chunk_count": len(parsed_chunks),
+            "parser_version": "knowledge-parser-v1",
+            "processing_stage": "embedding",
+        }
+        for index, chunk in enumerate(parsed_chunks):
+            db.add(KnowledgeChunk(
+                id=uuid.uuid4(), document_id=document.id,
+                agent_id=document.agent_id, team_id=document.team_id,
+                title=document.title, content=chunk.content, chunk_index=index,
+                token_text=" ".join(self._tokenize(f"{document.title}\n{chunk.content}")),
+                chunk_type=chunk.chunk_type, section_path=chunk.section_path,
+                article_no=chunk.article_no, article_label=chunk.article_label,
+                page_no=chunk.page_no, start_char=chunk.start_char,
+                end_char=chunk.end_char, chunk_metadata=chunk.metadata,
+            ))
         await db.commit()
         await db.refresh(document)
         return self._read_model(document, chunk_count=len(parsed_chunks))
@@ -274,8 +313,38 @@ class KnowledgeService:
             raise ValueError("PDF 解析失败，请确认文件未加密且内容可复制") from exc
         text = "\n\n".join(part for part in parts if part)
         if not text.strip():
-            raise ValueError("PDF 中未提取到可检索文本")
+            return KnowledgeService._ocr_pdf_text(data, len(reader.pages))
         return text
+
+    @staticmethod
+    def _ocr_pdf_text(data: bytes, page_count: int) -> str:
+        """Extract text from an image-only PDF without retaining temporary pages."""
+        try:
+            with tempfile.TemporaryDirectory(prefix="agentforge-ocr-") as directory:
+                source = f"{directory}/source.pdf"
+                with open(source, "wb") as handle:
+                    handle.write(data)
+                parts: list[str] = []
+                for page in range(1, page_count + 1):
+                    if page == 1 or page % 25 == 0 or page == page_count:
+                        logger.info("OCR scanned PDF progress: {}/{} pages", page, page_count)
+                    image = f"{directory}/page"
+                    subprocess.run(
+                        ["pdftoppm", "-f", str(page), "-l", str(page), "-r", "130", "-gray", "-singlefile", "-png", source, image],
+                        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=90,
+                    )
+                    result = subprocess.run(
+                        ["tesseract", f"{image}.png", "stdout", "-l", "chi_sim+eng"],
+                        check=True, capture_output=True, timeout=90,
+                    )
+                    parts.append(result.stdout.decode("utf-8", errors="replace").strip())
+                    Path(f"{image}.png").unlink(missing_ok=True)
+                text = "\n\n".join(part for part in parts if part)
+                if text.strip():
+                    return text
+        except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            raise ValueError("扫描版 PDF OCR 失败，请检查 OCR 工具与文件内容") from exc
+        raise ValueError("PDF 中未提取到可检索文本")
 
     @staticmethod
     def _extract_docx_text(data: bytes) -> str:
@@ -397,7 +466,14 @@ class KnowledgeService:
         if not query_tokens and not requested_article_no:
             return []
 
-        conditions = [KnowledgeChunk.agent_id == agent_id, KnowledgeChunk.team_id == team_id]
+        conditions = [
+            KnowledgeChunk.agent_id == agent_id,
+            KnowledgeChunk.team_id == team_id,
+            KnowledgeDocument.agent_id == agent_id,
+            KnowledgeDocument.team_id == team_id,
+            KnowledgeDocument.status == "ACTIVE",
+            KnowledgeDocument.embedding_status.notin_(("processing", "failed")),
+        ]
         if document_type:
             conditions.append(KnowledgeDocument.document_type == document_type)
         stmt = (

@@ -70,7 +70,11 @@ export function ChatComposer() {
           mime_type: file.type || document.source_mime_type,
           size: file.size,
         }])
-        notify.success(`文件已上传：${file.name}`)
+        if (document.embedding_status === 'failed') {
+          notify.error(`文件已解析但索引失败：${document.embedding_error || file.name}`)
+        } else {
+          notify.success(`文件已上传：${file.name}`)
+        }
       }
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '文件上传失败')

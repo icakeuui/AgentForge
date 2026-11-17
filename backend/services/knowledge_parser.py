@@ -24,6 +24,9 @@ class KnowledgeParser:
     ARTICLE_PATTERN = re.compile(r"第\s*([一二三四五六七八九十百0-9]+)\s*条")
     CHAPTER_PATTERN = re.compile(r"第\s*([一二三四五六七八九十百0-9]+)\s*章")
     SECTION_PATTERN = re.compile(r"第\s*([一二三四五六七八九十百0-9]+)\s*节")
+    CHAPTER_HEADING_PATTERN = re.compile(
+        r"(?m)^[ \t]*(第[ \t]*[一二三四五六七八九十百0-9]+[ \t]*章(?:[^\n]{0,60})?)[ \t]*$"
+    )
 
     def parse(self, *, title: str, content: str) -> list[ParsedKnowledgeChunk]:
         normalized = re.sub(r"\n{3,}", "\n\n", content.strip())
@@ -33,7 +36,34 @@ class KnowledgeParser:
         article_chunks = self._parse_articles(title=title, content=normalized)
         if article_chunks:
             return article_chunks
+        chapter_chunks = self._parse_chapters(title=title, content=normalized)
+        if chapter_chunks:
+            return chapter_chunks
         return self._fallback_chunks(title=title, content=normalized, chunk_type="plain")
+
+    def _parse_chapters(self, *, title: str, content: str) -> list[ParsedKnowledgeChunk]:
+        headings = list(self.CHAPTER_HEADING_PATTERN.finditer(content))
+        if not headings:
+            return []
+        chunks: list[ParsedKnowledgeChunk] = []
+        if content[:headings[0].start()].strip():
+            for part in self._fallback_chunks(
+                title=title, content=content[:headings[0].start()], chunk_type="preface",
+            ):
+                part.section_path = [title, "前言"]
+                chunks.append(part)
+        for index, heading in enumerate(headings):
+            end = headings[index + 1].start() if index + 1 < len(headings) else len(content)
+            body = content[heading.start():end]
+            chapter_label = re.sub(r"\s+", "", heading.group(1))
+            for part in self._fallback_chunks(title=title, content=body, chunk_type="chapter"):
+                part.start_char = heading.start() + (part.start_char or 0)
+                part.end_char = heading.start() + (part.end_char or 0)
+                part.section_path = [title, chapter_label]
+                if chapter_label not in re.sub(r"\s+", "", part.content[:70]):
+                    part.content = f"{chapter_label}\n{part.content}"
+                chunks.append(part)
+        return chunks
 
     def _parse_articles(self, *, title: str, content: str) -> list[ParsedKnowledgeChunk]:
         matches = list(self.ARTICLE_PATTERN.finditer(content))

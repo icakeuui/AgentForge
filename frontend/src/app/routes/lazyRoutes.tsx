@@ -5,6 +5,7 @@ export const AgentsPage = lazy(() => import('../../pages/AgentsPage').then((modu
 export const AgentSquarePage = lazy(() => import('../../pages/AgentSquarePage').then((module) => ({ default: module.AgentSquarePage })))
 export const HomePage = lazy(() => import('../../pages/HomePage').then((module) => ({ default: module.HomePage })))
 export const LearningCenterPage = lazy(() => import('../../pages/LearningCenterPage').then((module) => ({ default: module.LearningCenterPage })))
+export const DeepLearningPage = lazy(() => import('../../pages/DeepLearningPage').then((module) => ({ default: module.DeepLearningPage })))
 export const LearningCoursePage = lazy(() => import('../../pages/LearningCenterPage').then((module) => ({ default: module.LearningCoursePage })))
 export const LearningReaderPage = lazy(() => import('../../pages/LearningCenterPage').then((module) => ({ default: module.LearningReaderPage })))
 export const KnowledgeQuizCasePage = lazy(() => import('../../pages/KnowledgeQuizCasePage').then((module) => ({ default: module.KnowledgeQuizCasePage })))

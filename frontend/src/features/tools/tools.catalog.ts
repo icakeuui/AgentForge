@@ -1,4 +1,4 @@
-import { Calculator, Search } from 'lucide-react'
+import { Calculator } from 'lucide-react'
 import type { ComponentType } from 'react'
 
 export interface BuiltinToolOption {
@@ -10,13 +10,6 @@ export interface BuiltinToolOption {
 }
 
 export const BUILTIN_TOOL_OPTIONS: BuiltinToolOption[] = [
-  {
-    id: 'websearch',
-    aliases: ['websearch', 'web_search', 'builtin/websearch', 'builtin/web_search'],
-    name: '网页搜索',
-    description: '根据用户问题检索公开网页信息，并把标题、链接和摘要返回给模型。',
-    icon: Search,
-  },
   {
     id: 'calculate',
     aliases: ['calculate', 'caculate', 'builtin/calculate', 'builtin/caculate'],

@@ -94,3 +94,28 @@ def test_keyword_ranking_orders_by_weighted_overlap():
     assert ranked[0].chunk.content == "学生旷课处分规定"
     assert ranked[0].match_type == "keyword"
     assert ranked[0].is_direct_evidence is True
+
+
+def test_single_generic_overlap_is_not_evidence():
+    chunk = _chunk(content="网络知识点", token_text="网络 知识 知识点")
+    ranked = knowledge_retrieval_ranker.rank(
+        chunks=[chunk], query="知识库中不存在的紫色火星香蕉编号是什么",
+        query_tokens=["知识", "紫色火星", "香蕉编号"], retrieval_mode="optional_hybrid",
+        requested_article_no=None, include_near_misses=True,
+        extract_article_no=knowledge_service.extract_article_no,
+        token_weight=knowledge_service._token_weight,
+    )
+    assert ranked == []
+
+
+def test_chapter_heading_is_structural_evidence():
+    chapter = _chunk(content="第三章 数据链路层的主要知识点", token_text="数据链路层 知识点")
+    other = _chunk(content="第一章 网络知识点", token_text="网络 知识点")
+    ranked = knowledge_retrieval_ranker.rank(
+        chunks=[other, chapter], query="第三章重点",
+        query_tokens=["重点"], retrieval_mode="optional_hybrid",
+        requested_article_no=None, include_near_misses=True,
+        extract_article_no=knowledge_service.extract_article_no,
+        token_weight=knowledge_service._token_weight,
+    )
+    assert ranked and ranked[0].chunk is chapter

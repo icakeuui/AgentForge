@@ -12,11 +12,11 @@ class RetrievalPolicyService:
         if classification.intent_type == "DIRECT_CHAT":
             return RetrievalPolicy(retrieval_mode="none", limit=0, min_score=0.0, required=False)
         if classification.query_subtype == "exact_clause":
-            return RetrievalPolicy(retrieval_mode="exact_clause", limit=4, min_score=1.0, required=True)
+            return RetrievalPolicy(retrieval_mode="exact_clause", limit=12, min_score=1.0, required=True)
         if classification.intent_type == "KB_REQUIRED":
-            return RetrievalPolicy(retrieval_mode="required_hybrid", limit=4, min_score=2.0, required=True)
+            return RetrievalPolicy(retrieval_mode="required_hybrid", limit=20, min_score=2.0, required=True)
         if classification.intent_type == "KB_OPTIONAL":
-            return RetrievalPolicy(retrieval_mode="optional_hybrid", limit=4, min_score=2.0, required=False)
+            return RetrievalPolicy(retrieval_mode="optional_hybrid", limit=12, min_score=2.0, required=False)
         return RetrievalPolicy(retrieval_mode="none", limit=0, min_score=0.0, required=False)
 
 

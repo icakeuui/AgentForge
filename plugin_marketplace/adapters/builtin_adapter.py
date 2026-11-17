@@ -7,14 +7,11 @@ from __future__ import annotations
 
 import asyncio
 import ast
-import html
 import math
 import json
 import operator
 import re
 from typing import Any
-from urllib.parse import quote_plus
-from urllib.request import Request, urlopen
 
 from backend.services.sandbox_service import sandbox_service
 from plugin_marketplace.adapters.base import BaseAdapter
@@ -142,69 +139,6 @@ class CalculateTool:
         raise ValueError("only arithmetic expressions are supported")
 
 
-class WebSearchTool:
-    """Search the public web and return lightweight result snippets."""
-
-    aliases = ("websearch", "web_search")
-    description = "Search the web for current public information and return result titles, links, and snippets."
-    input_schema = {
-        "type": "object",
-        "properties": {
-            "query": {"type": "string", "description": "Search query."},
-            "limit": {
-                "type": "integer",
-                "description": "Maximum number of results to return, from 1 to 5.",
-                "minimum": 1,
-                "maximum": 5,
-            },
-        },
-        "required": ["query"],
-        "additionalProperties": False,
-    }
-
-    async def execute(self, arguments: dict) -> str:
-        query = str(arguments.get("query", "")).strip()
-        if not query:
-            raise ValueError("query is required")
-        limit = int(arguments.get("limit") or 5)
-        limit = min(max(limit, 1), 5)
-        results = await asyncio.to_thread(self._search_duckduckgo, query, limit)
-        return json.dumps({"query": query, "results": results}, ensure_ascii=False)
-
-    @staticmethod
-    def _search_duckduckgo(query: str, limit: int) -> list[dict[str, str]]:
-        url = f"https://duckduckgo.com/html/?q={quote_plus(query)}"
-        request = Request(
-            url,
-            headers={
-                "User-Agent": "Mozilla/5.0 (compatible; AgentForgeTool/1.0)",
-            },
-        )
-        with urlopen(request, timeout=8) as response:
-            raw_html = response.read().decode("utf-8", errors="ignore")
-
-        pattern = re.compile(
-            r'<a[^>]+class="result__a"[^>]+href="(?P<link>[^"]+)"[^>]*>(?P<title>.*?)</a>.*?'
-            r'<a[^>]+class="result__snippet"[^>]*>(?P<snippet>.*?)</a>',
-            re.DOTALL,
-        )
-        results: list[dict[str, str]] = []
-        for match in pattern.finditer(raw_html):
-            title = WebSearchTool._clean_html(match.group("title"))
-            link = html.unescape(match.group("link"))
-            snippet = WebSearchTool._clean_html(match.group("snippet"))
-            if title and link:
-                results.append({"title": title, "url": link, "snippet": snippet})
-            if len(results) >= limit:
-                break
-        return results
-
-    @staticmethod
-    def _clean_html(value: str) -> str:
-        text = re.sub(r"<.*?>", "", value)
-        return html.unescape(text).strip()
-
-
 class BuiltinAdapter(BaseAdapter):
     """
     Builtin tool adapter for AgentForge.
@@ -218,7 +152,6 @@ class BuiltinAdapter(BaseAdapter):
             "python_exec": PythonExecTool(),
             "python_add_tool": PythonAddTool(),
             "calculate": CalculateTool(),
-            "websearch": WebSearchTool(),
         }
 
     RISK_PROFILES: dict[str, dict[str, Any]] = {
@@ -277,22 +210,6 @@ class BuiltinAdapter(BaseAdapter):
             "allowed_intents": ["TOOL_REQUIRED", "TOOL_OPTIONAL"],
             "domains": ["calculator", "utility"],
             "max_calls_per_run": 4,
-        },
-        "websearch": {
-            "risk_level": "medium",
-            "side_effect": "external_read",
-            "requires_confirmation": False,
-            "allowed_intents": ["TOOL_REQUIRED", "TOOL_OPTIONAL"],
-            "domains": ["web_search"],
-            "max_calls_per_run": 2,
-        },
-        "web_search": {
-            "risk_level": "medium",
-            "side_effect": "external_read",
-            "requires_confirmation": False,
-            "allowed_intents": ["TOOL_REQUIRED", "TOOL_OPTIONAL"],
-            "domains": ["web_search"],
-            "max_calls_per_run": 2,
         },
     }
 

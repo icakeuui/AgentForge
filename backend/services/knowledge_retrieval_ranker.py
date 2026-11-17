@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+import re
 from typing import Callable, Iterable, Sequence
 
 from backend.models.orm import KnowledgeChunk
@@ -100,7 +101,10 @@ class KnowledgeRetrievalRanker:
             )
             unique_overlap = sum(1 for token in query_counter if chunk_counter.get(token, 0) > 0)
             phrase_bonus = cls._phrase_bonus(normalized_query, chunk)
-            score = float(weighted_overlap + phrase_bonus)
+            structure_bonus = cls._structure_bonus(normalized_query, chunk)
+            score = float(weighted_overlap + phrase_bonus + structure_bonus)
+            if unique_overlap < cls.SEARCH_MIN_UNIQUE_OVERLAP and phrase_bonus == 0 and structure_bonus == 0:
+                continue
             min_score = cls.SEARCH_MIN_SCORE
             if phrase_bonus == 0 and unique_overlap < cls.SEARCH_MIN_UNIQUE_OVERLAP:
                 min_score = cls.SEARCH_MIN_SINGLE_OVERLAP_SCORE
@@ -126,6 +130,16 @@ class KnowledgeRetrievalRanker:
         if normalized_query in chunk.content.lower():
             phrase_bonus += 2.0
         return phrase_bonus
+
+    @staticmethod
+    def _structure_bonus(normalized_query: str, chunk: KnowledgeChunk) -> float:
+        """Prefer the requested chapter/section without treating it as a law article."""
+        match = re.search(r"第\s*[一二三四五六七八九十百0-9]+\s*[章节]", normalized_query)
+        if not match:
+            return 0.0
+        label = re.sub(r"\s+", "", match.group(0))
+        structure = "".join(chunk.section_path or []) + (chunk.content or "")
+        return 4.0 if label in re.sub(r"\s+", "", structure) else 0.0
 
 
 knowledge_retrieval_ranker = KnowledgeRetrievalRanker()

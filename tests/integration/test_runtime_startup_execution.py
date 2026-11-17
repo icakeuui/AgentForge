@@ -125,7 +125,7 @@ def test_startup_assigns_default_tools_to_tool_enabled_agents(monkeypatch):
         detail_response = client.get(f"/agents/{agent_id}", headers=_auth_headers())
         assert detail_response.status_code == 200
         detail = detail_response.json()["data"]
-        assert detail["tools"] == ["websearch", "calculate"]
+        assert detail["tools"] == ["calculate"]
 
 
 def test_agent_create_rejects_unknown_tool_ids_after_startup(monkeypatch):

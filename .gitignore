@@ -5,6 +5,24 @@
 .env.*
 !.env.example
 !.env.docker.example
+# Local service data; keep source/config files named qdrant tracked.
+/qdrant_data/
+/qdrant_storage/
+**/snapshots/
+**/*.snapshot
+**/*.snapshot.*
+**/*.zip
+!/frontend/public/learning/**/*.zip
+frontend/dist/
+frontend/.tmp-learning-build/
+/参赛材料/
+model-cache/
+models/
+**/model-cache/
+**/models/**/pytorch_model*.bin
+**/models/**/*.safetensors
+**/models/**/*.gguf
+**/models/**/*.onnx
 backups/
 *.key
 *.pem

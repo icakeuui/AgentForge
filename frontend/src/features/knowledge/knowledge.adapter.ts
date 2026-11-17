@@ -15,6 +15,9 @@ export interface KnowledgeDocument {
   effective_from: string | null
   effective_to: string | null
   status: string
+  embedding_status: string
+  embedding_error: string | null
+  embedded_chunk_count: number
   metadata: Record<string, unknown>
   created_at: string
   updated_at: string
@@ -104,6 +107,9 @@ function mapDocument(raw: unknown): KnowledgeDocument {
     effective_from: asOptionalString(raw.effective_from, 'effective_from'),
     effective_to: asOptionalString(raw.effective_to, 'effective_to'),
     status: typeof raw.status === 'string' ? raw.status : 'ACTIVE',
+    embedding_status: typeof raw.embedding_status === 'string' ? raw.embedding_status : 'pending',
+    embedding_error: asOptionalString(raw.embedding_error, 'embedding_error'),
+    embedded_chunk_count: typeof raw.embedded_chunk_count === 'number' ? raw.embedded_chunk_count : 0,
     metadata: asMetadata(raw.metadata),
     created_at: asString(raw.created_at, 'created_at'),
     updated_at: asString(raw.updated_at, 'updated_at'),
@@ -170,6 +176,13 @@ export const knowledgeAdapter = {
       authMode: 'required',
     })
     return Array.isArray(result.data) ? result.data.map((item) => mapSearchResult(item)) : []
+  },
+
+  async retryIndex(agentId: string, documentId: string): Promise<KnowledgeDocument> {
+    const result = await apiClient.request<unknown>(`/agents/${agentId}/knowledge/${documentId}/retry-index`, {
+      method: 'POST', authMode: 'required',
+    })
+    return mapDocument(result.data)
   },
 
   async deleteDocument(agentId: string, documentId: string): Promise<void> {

@@ -95,8 +95,6 @@ class AgentExecutionState(TypedDict):
 
 class LangGraphExecutionStrategy:
     MAX_CONVERSATION_HISTORY_MESSAGES = 20
-    MAX_KNOWLEDGE_CONTEXT_CHARS = 3200
-    MAX_KNOWLEDGE_CHUNK_CHARS = 900
 
     FIXED_SAFETY_PROMPT = (
         "You are an AI coding agent.\n"
@@ -511,8 +509,6 @@ class LangGraphExecutionStrategy:
                 "status": ExecutionStatus.RUNNING.value,
             }
 
-        knowledge_retrieval = await self._retrieve_knowledge_details(state, retrieval_policy=retrieval_policy)
-        knowledge_context = str(knowledge_retrieval.get("context", ""))
         system_prompt = (
             f"{self.FIXED_SAFETY_PROMPT}\n"
             f"{self.FIXED_RUNTIME_PROMPT}\n"
@@ -526,12 +522,35 @@ class LangGraphExecutionStrategy:
                 "No executable tool schemas are attached to this turn. Do not attempt or describe tool calls. "
                 "If the user asks for information that requires external tools, say the tool is unavailable in this run.\n"
             )
+        runtime_cfg = agent_cfg.get("runtime_config") if isinstance(agent_cfg.get("runtime_config"), dict) else {}
+        budget_messages = [
+            Message(role="system", content=system_prompt),
+            *state["conversation_history"],
+            Message(role="user", content=state["user_input"]),
+        ]
+        if state["attachment_context"]:
+            budget_messages.append(Message(role="system", content=state["attachment_context"]))
+        rag_budget_plan = self.context_budget_manager.plan_rag_budget(
+            query=state["user_input"],
+            messages_without_knowledge=budget_messages,
+            tools=allowed_tools,
+            model_name=str(agent_cfg.get("llm_model_name", "")),
+            max_completion_tokens=runtime_cfg.get("max_tokens"),
+            runtime_config=runtime_cfg,
+        )
+        knowledge_retrieval = await self._retrieve_knowledge_details(
+            state,
+            retrieval_policy=retrieval_policy,
+            rag_budget_plan=rag_budget_plan.model_dump(),
+        )
+        knowledge_context = str(knowledge_retrieval.get("context", ""))
         if classification.intent_type == "KB_REQUIRED" and knowledge_retrieval.get("matched"):
             system_prompt = (
                 f"{system_prompt}\n"
                 "Knowledge Grounding Rules:\n"
                 "The user request requires retrieved knowledge. Answer only from the retrieved evidence. "
-                "Include the provided source label in the final answer. If the evidence is insufficient, say so explicitly.\n"
+                "Include the provided source label in the final answer. If the evidence is insufficient, say so explicitly. "
+                "Retrieved knowledge is already available in this message; do not repeat the same retrieval tool call for this question.\n"
             )
         if knowledge_retrieval.get("retrieval_mode") == "document_inventory":
             system_prompt = f"{system_prompt}\n{self.DOCUMENT_INVENTORY_PROMPT}"
@@ -1452,7 +1471,7 @@ class LangGraphExecutionStrategy:
             safe_fallback = (
                 f"当前知识库未检索到与「{retrieval_result.get('query') or ''}」直接匹配的内容。\n"
                 "已检索范围：当前 Agent 知识库。\n"
-                "请上传或补充对应校规/制度文档后重试。"
+                "请检查当前智能体的知识文档与检索问题是否对应后重试。"
             )
             retrieval_result["knowledge_miss_answer"] = safe_fallback
             return {
@@ -1487,17 +1506,20 @@ class LangGraphExecutionStrategy:
         return ""
 
     @staticmethod
-    def _truncate_knowledge_context_items(items: List[Any]) -> tuple[List[Dict[str, Any]], str, int, int]:
+    def _build_knowledge_context_items(
+        items: List[Any],
+        *,
+        token_budget: int,
+    ) -> tuple[List[Dict[str, Any]], str, int, int, int, List[Dict[str, Any]]]:
         blocks: List[str] = []
         metadata: List[Dict[str, Any]] = []
+        dropped: List[Dict[str, Any]] = []
         total_original_chars = 0
-        remaining_chars = LangGraphExecutionStrategy.MAX_KNOWLEDGE_CONTEXT_CHARS
+        used_tokens = 0
 
         for index, item in enumerate(items, start=1):
             original_content = item.content or ""
             total_original_chars += len(original_content)
-            if remaining_chars <= 0:
-                break
 
             source_filename = getattr(item, "source_filename", None) or getattr(item, "document_title", None) or item.title
             document_title = getattr(item, "document_title", None) or item.title
@@ -1507,16 +1529,59 @@ class LangGraphExecutionStrategy:
                 f"document_id: {item.document_id} | chunk_id: {item.chunk_id} | "
                 f"score: {getattr(item, 'score', 0.0):.4f} | source: {citation_label}"
             )
-            header_chars = len(header) + 1
-            if remaining_chars < header_chars:
-                break
-            content_budget = remaining_chars - header_chars
-            content_limit = min(LangGraphExecutionStrategy.MAX_KNOWLEDGE_CHUNK_CHARS, content_budget)
-            injected_content = original_content[:content_limit]
-            remaining_chars -= header_chars + len(injected_content)
+            complete_block = f"{header}\n{original_content}"
+            block_tokens = context_budget_manager.estimate_text_tokens(complete_block)
+            remaining_tokens = max(0, token_budget - used_tokens)
+            injected_content = original_content
+            was_truncated = False
+            if block_tokens > remaining_tokens:
+                if blocks:
+                    dropped.append({
+                        "document_id": str(item.document_id),
+                        "chunk_id": str(item.chunk_id),
+                        "reason": "rag_token_budget_exhausted",
+                        "estimated_tokens": block_tokens,
+                    })
+                    continue
+                header_tokens = context_budget_manager.estimate_text_tokens(header)
+                injected_content = context_budget_manager.fit_text_to_token_budget(
+                    original_content,
+                    max(0, remaining_tokens - header_tokens),
+                )
+                was_truncated = len(injected_content) < len(original_content)
+                if not injected_content:
+                    dropped.append({
+                        "document_id": str(item.document_id),
+                        "chunk_id": str(item.chunk_id),
+                        "reason": "single_evidence_exceeds_rag_token_budget",
+                        "estimated_tokens": block_tokens,
+                    })
+                    continue
+            rendered_block = f"{header}\n{injected_content}"
+            rendered_tokens = context_budget_manager.estimate_text_tokens(rendered_block)
+            # Token estimation is not perfectly additive around the header/content
+            # boundary. Enforce the final budget against the fully rendered block so
+            # the diagnostic counter can never exceed the advertised RAG budget.
+            if rendered_tokens > remaining_tokens and injected_content:
+                injected_content = context_budget_manager.fit_text_to_token_budget(
+                    injected_content,
+                    max(0, context_budget_manager.estimate_text_tokens(injected_content) - (rendered_tokens - remaining_tokens) - 1),
+                )
+                rendered_block = f"{header}\n{injected_content}"
+                rendered_tokens = context_budget_manager.estimate_text_tokens(rendered_block)
+                was_truncated = len(injected_content) < len(original_content)
+            if rendered_tokens > remaining_tokens or not injected_content:
+                dropped.append({
+                    "document_id": str(item.document_id),
+                    "chunk_id": str(item.chunk_id),
+                    "reason": "single_evidence_exceeds_rag_token_budget",
+                    "estimated_tokens": block_tokens,
+                })
+                continue
+            used_tokens += rendered_tokens
             was_truncated = len(injected_content) < len(original_content)
-            suffix = "\n[内容已截断]" if was_truncated else ""
-            blocks.append(f"{header}\n{injected_content}{suffix}")
+            suffix = "\n[内容因模型上下文预算受限而截断]" if was_truncated else ""
+            blocks.append(f"{rendered_block}{suffix}")
             metadata.append(
                 {
                     "document_id": str(item.document_id),
@@ -1536,19 +1601,29 @@ class LangGraphExecutionStrategy:
                     "content_preview": injected_content[:400],
                     "original_content_chars": len(original_content),
                     "injected_content_chars": len(injected_content),
+                    "estimated_tokens": rendered_tokens,
                     "truncated": was_truncated,
                 }
             )
 
-        return metadata, "\n\n".join(blocks), total_original_chars, LangGraphExecutionStrategy.MAX_KNOWLEDGE_CONTEXT_CHARS - remaining_chars
+        context = "\n\n".join(blocks)
+        return metadata, context, total_original_chars, len(context), used_tokens, dropped
 
     @staticmethod
     async def _retrieve_knowledge_details(
         state: AgentExecutionState,
         *,
         retrieval_policy: RetrievalPolicy | None = None,
+        rag_budget_plan: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
-        retrieval_policy = retrieval_policy or RetrievalPolicy(retrieval_mode="optional_hybrid", limit=4, min_score=2.0)
+        retrieval_policy = retrieval_policy or RetrievalPolicy(retrieval_mode="optional_hybrid", limit=12, min_score=2.0)
+        rag_budget_plan = rag_budget_plan or {
+            "complexity": "simple",
+            "target_tokens": 8000,
+            "available_tokens": 8000,
+            "budget_tokens": 8000,
+            "capped_by_model_window": False,
+        }
         if retrieval_policy.retrieval_mode == "none":
             return {
                 "query": state["user_input"],
@@ -1616,40 +1691,19 @@ class LangGraphExecutionStrategy:
                 vector_provider = str(embedding_config.get("provider", "")) or "unknown"
                 vector_model = str(embedding_config.get("model", "")) or "unknown"
                 vector_dimensions = embedding_config.get("dimensions")
-                results = []
-                vector_error = None
-                max_chunks_per_document = 2 if self._is_multi_source_question(state["user_input"]) else None
-                try:
-                    results = await rag_retrieval_service.vector_search(
-                        db,
-                        agent_id=agent_id,
-                        team_id=team_id,
-                        agent_config=agent_config,
-                        query=state["user_input"],
-                        limit=retrieval_policy.limit,
-                        max_chunks_per_document=max_chunks_per_document,
-                    )
-                    if results:
-                        logger.bind(
-                            event="knowledge_vector_retrieval",
-                            execution_id=str(state["execution_id"]),
-                            agent_id=state["agent_id"],
-                            provider=vector_provider,
-                            model=vector_model,
-                            dimensions=vector_dimensions,
-                            found_chunks=len(results),
-                        ).info("Embedding query generated and Qdrant search found chunks")
-                    else:
-                        logger.bind(
-                            event="knowledge_vector_retrieval_empty",
-                            execution_id=str(state["execution_id"]),
-                            agent_id=state["agent_id"],
-                            provider=vector_provider,
-                            model=vector_model,
-                            dimensions=vector_dimensions,
-                        ).info("Qdrant search returned no chunks; using keyword fallback")
-                except Exception as exc:
-                    vector_error = str(exc)
+                complexity = str(rag_budget_plan.get("complexity", "simple"))
+                retrieval_limit = {"simple": 8, "complex": 20, "comprehensive": 32}.get(complexity, 8)
+                if retrieval_policy.retrieval_mode == "exact_clause":
+                    retrieval_limit = min(retrieval_limit, 12)
+                max_chunks_per_document = 6 if LangGraphExecutionStrategy._is_multi_source_question(state["user_input"]) else None
+                results, vector_error = await rag_retrieval_service.hybrid_search(
+                    db, agent_id=agent_id, team_id=team_id,
+                    agent_config=agent_config, query=state["user_input"],
+                    limit=retrieval_limit,
+                    retrieval_mode=retrieval_policy.retrieval_mode,
+                    max_chunks_per_document=max_chunks_per_document,
+                )
+                if vector_error:
                     logger.bind(
                         event="knowledge_vector_retrieval_failed",
                         execution_id=str(state["execution_id"]),
@@ -1658,19 +1712,13 @@ class LangGraphExecutionStrategy:
                         model=vector_model,
                         dimensions=vector_dimensions,
                         error=vector_error,
-                    ).warning("Vector retrieval failed; using keyword fallback")
-
-                if not results:
-                    results = await knowledge_service.search(
-                        db,
-                        agent_id=agent_id,
-                        team_id=team_id,
-                        query=state["user_input"],
-                        limit=retrieval_policy.limit,
-                        retrieval_mode=retrieval_policy.retrieval_mode,
-                        max_chunks_per_document=max_chunks_per_document,
+                    ).warning("Vector retrieval failed; using keyword evidence")
+                knowledge_hits, context, original_chars, injected_chars, used_tokens, dropped = (
+                    LangGraphExecutionStrategy._build_knowledge_context_items(
+                        results,
+                        token_budget=max(0, int(rag_budget_plan.get("budget_tokens", 0))),
                     )
-                knowledge_hits, context, original_chars, injected_chars = LangGraphExecutionStrategy._truncate_knowledge_context_items(results)
+                )
                 matched = len(results) > 0
                 if retrieval_policy.retrieval_mode == "exact_clause":
                     matched = any(hit.get("match_type") == "exact_clause" and hit.get("is_direct_evidence") for hit in knowledge_hits)
@@ -1684,7 +1732,13 @@ class LangGraphExecutionStrategy:
                     "context": context,
                     "original_context_chars": original_chars,
                     "injected_context_chars": injected_chars,
-                    "context_truncated": injected_chars < original_chars,
+                    "context_truncated": bool(dropped) or any(hit.get("truncated") for hit in knowledge_hits),
+                    "rag_budget": rag_budget_plan,
+                    "retrieved_candidate_count": len(results),
+                    "injected_evidence_count": len(knowledge_hits),
+                    "injected_context_tokens": used_tokens,
+                    "dropped_evidence_count": len(dropped),
+                    "dropped_evidence": dropped,
                     "latency_ms": int((time.monotonic() - started) * 1000),
                     "error": vector_error,
                 }
@@ -1716,7 +1770,7 @@ class LangGraphExecutionStrategy:
     def _is_multi_source_question(query: str) -> bool:
         return any(
             marker in query
-            for marker in ("对比", "比较", "分别", "综合", "多份资料", "多个文件", "同时引用", "不同文件")
+            for marker in ("对比", "比较", "分别", "综合", "两份资料", "多份资料", "多个文件", "同时引用", "不同文件")
         )
 
     @classmethod

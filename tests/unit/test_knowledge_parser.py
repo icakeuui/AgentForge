@@ -1,4 +1,21 @@
+import re
+
 from backend.services.knowledge_parser import knowledge_parser
+
+
+def test_chapter_chunks_keep_heading_on_continuations():
+    content = "第一章 网络基础\n" + "基础内容。" * 250 + "\n第二章 数据链路\n" + "链路内容。" * 250
+    chunks = knowledge_parser.parse(title="网络教材", content=content)
+    assert len(chunks) >= 4
+    assert all(chunk.chunk_type == "chapter" for chunk in chunks)
+    assert all(chunk.section_path[1] in re.sub(r"\s+", "", chunk.content) for chunk in chunks)
+    assert any("第二章" in chunk.section_path[1] for chunk in chunks)
+
+
+def test_chapter_parser_keeps_preface():
+    chunks = knowledge_parser.parse(title="课程", content="课程前言。\n第一章 基础\n正文。")
+    assert chunks[0].chunk_type == "preface"
+    assert "课程前言" in chunks[0].content
 
 
 def test_parser_extracts_article_chunks_with_metadata():

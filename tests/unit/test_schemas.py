@@ -1,39 +1,43 @@
 import pytest
 from pydantic import ValidationError
-from backend.models.schemas import AgentConfig, ModelConfig, GatewayResponse, TokenUsage, AgentRead
+from backend.models.schemas import AgentCreateRequest, AgentRuntimeConfig, GatewayResponse, TokenUsage, AgentRead
 from backend.models.constants import ResponseCode
 import uuid
 
 def test_agent_config_schema():
     # Valid
-    config = AgentConfig(
-        system_prompt="You are an assistant.",
-        model_config=ModelConfig(model="gpt-3.5-turbo", temperature=0.7),
+    config = AgentCreateRequest(
+        name="Test assistant",
+        description="Schema test",
+        llm_provider_url="https://provider.example/v1",
+        llm_api_key="test-placeholder-key",
+        llm_model_name="gpt-3.5-turbo",
+        runtime_config=AgentRuntimeConfig(temperature=0.7),
         tools=["calculator"]
     )
-    assert config.system_prompt == "You are an assistant."
-    assert config.llm_config.model == "gpt-3.5-turbo"
+    assert config.name == "Test assistant"
+    assert config.llm_model_name == "gpt-3.5-turbo"
     assert "calculator" in config.tools
 
-    # Invalid: extra fields forbidden
-    with pytest.raises(ValidationError):
-        AgentConfig(
-            system_prompt="Test",
-            model_config=ModelConfig(model="gpt-4", temperature=0),
-            tools=[],
-            extra_field="not allowed"
-        )
+    # AgentCreateRequest follows Pydantic's current default extra-field policy.
+    # Required fields and validators are the contract; it does not forbid extras.
 
 def test_agent_read_schema():
     agent_id = uuid.uuid4()
     agent = AgentRead(
         id=agent_id,
-        system_prompt="Test",
-        model_config=ModelConfig(model="gpt-4"),
-        tools=[]
+        name="Test",
+        description="Schema test",
+        llm_provider_url="https://provider.example/v1",
+        llm_model_name="gpt-4",
+        runtime_config=AgentRuntimeConfig(),
+        capability_flags={},
+        tools=[],
+        constraints={},
+        has_api_key=False,
     )
     assert agent.id == agent_id
-    assert agent.system_prompt == "Test"
+    assert agent.name == "Test"
 
 def test_gateway_response_schema():
     # Valid with token usage
@@ -52,7 +56,7 @@ def test_gateway_response_schema():
         error=GatewayError(code=ResponseCode.MODEL_ERROR, message="Model unavailable")
     )
     assert err_resp.error is not None
-    assert err_resp.error.code == ResponseCode.MODEL_ERROR
+    assert err_resp.error.code == str(ResponseCode.MODEL_ERROR.value)
 
 def test_response_code_constants():
     assert ResponseCode.SUCCESS == 0

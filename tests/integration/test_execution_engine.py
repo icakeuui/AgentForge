@@ -94,7 +94,7 @@ def _tool_schema(name: str, properties: dict, required: list[str]) -> dict:
     }
 
 
-def test_langgraph_strategy_truncates_injected_knowledge_context():
+def test_langgraph_strategy_uses_token_budget_for_injected_knowledge_context():
     long_content = "知识内容" * 1000
     results = [
         SimpleNamespace(
@@ -104,19 +104,20 @@ def test_langgraph_strategy_truncates_injected_knowledge_context():
             document_title=f"资料 {index}",
             source_filename=f"资料 {index}.pdf",
             content=long_content,
-            document_id=uuid.uuid4(),
-            chunk_id=uuid.uuid4(),
             score=1.0,
         )
         for index in range(4)
     ]
 
-    knowledge_hits, context, original_chars, injected_chars = LangGraphExecutionStrategy._truncate_knowledge_context_items(results)
+    knowledge_hits, context, original_chars, injected_chars, used_tokens, dropped = (
+        LangGraphExecutionStrategy._build_knowledge_context_items(results, token_budget=32000)
+    )
 
-    assert len(context) < original_chars
-    assert injected_chars <= LangGraphExecutionStrategy.MAX_KNOWLEDGE_CONTEXT_CHARS
+    assert len(context) >= original_chars
+    assert used_tokens <= 32000
     assert len(knowledge_hits) == 4
-    assert all(hit["truncated"] for hit in knowledge_hits)
+    assert not dropped
+    assert all(not hit["truncated"] for hit in knowledge_hits)
     assert all(f"source_filename: 资料 {index}.pdf" in context for index in range(4))
     assert all(hit["source_filename"] == f"资料 {index}.pdf" for index, hit in enumerate(knowledge_hits))
 

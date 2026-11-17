@@ -8,12 +8,15 @@ from typing import Any, Dict, List, Optional
 from backend.models.schemas import Message
 
 
-DEFAULT_CONTEXT_WINDOW = 8192
+DEFAULT_CONTEXT_WINDOW = 32768
 DEFAULT_RESERVED_COMPLETION_TOKENS = 1024
 DEFAULT_SAFETY_MARGIN_RATIO = 0.08
 MIN_SAFETY_MARGIN_TOKENS = 256
 MIN_PROMPT_BUDGET_TOKENS = 3072
 MAX_TOOL_OBSERVATION_CHARS = 6000
+RAG_BUDGET_SIMPLE_TOKENS = 8000
+RAG_BUDGET_COMPLEX_TOKENS = 16000
+RAG_BUDGET_COMPREHENSIVE_TOKENS = 32000
 
 MODEL_CONTEXT_WINDOWS: Dict[str, int] = {
     "gpt-3.5-turbo": 16385,
@@ -27,7 +30,41 @@ MODEL_CONTEXT_WINDOWS: Dict[str, int] = {
     "o3": 200000,
     "o3-mini": 200000,
     "o4-mini": 200000,
+    # Legacy aliases are kept conservative. Explicit runtime metadata always wins.
+    "deepseek-chat": 128000,
+    "deepseek-reasoner": 128000,
+    "deepseek-flash": 1048576,
+    "deepseek-v4-flash": 1048576,
+    "deepseek-v4-pro": 1048576,
 }
+
+
+@dataclass
+class RagBudgetPlan:
+    complexity: str
+    target_tokens: int
+    available_tokens: int
+    budget_tokens: int
+    context_limit: int
+    reserved_completion_tokens: int
+    safety_margin_tokens: int
+    base_prompt_tokens: int
+    tools_tokens: int
+    capped_by_model_window: bool
+
+    def model_dump(self) -> Dict[str, Any]:
+        return {
+            "complexity": self.complexity,
+            "target_tokens": self.target_tokens,
+            "available_tokens": self.available_tokens,
+            "budget_tokens": self.budget_tokens,
+            "context_limit": self.context_limit,
+            "reserved_completion_tokens": self.reserved_completion_tokens,
+            "safety_margin_tokens": self.safety_margin_tokens,
+            "base_prompt_tokens": self.base_prompt_tokens,
+            "tools_tokens": self.tools_tokens,
+            "capped_by_model_window": self.capped_by_model_window,
+        }
 
 
 @dataclass
@@ -155,6 +192,65 @@ class ContextBudgetManager:
             exceeded=exceeded,
         )
 
+    def plan_rag_budget(
+        self,
+        *,
+        query: str,
+        messages_without_knowledge: List[Message],
+        tools: Optional[List[Dict[str, Any]]],
+        model_name: str,
+        max_completion_tokens: Optional[int],
+        runtime_config: Optional[Dict[str, Any]] = None,
+    ) -> RagBudgetPlan:
+        """Allocate evidence tokens after reserving every non-RAG input component."""
+        runtime_config = runtime_config or {}
+        context_limit = self._resolve_context_window(model_name, runtime_config)
+        reserved_completion_tokens = self._resolve_reserved_completion_tokens(
+            max_completion_tokens=max_completion_tokens,
+            runtime_config=runtime_config,
+        )
+        safety_margin_tokens = max(MIN_SAFETY_MARGIN_TOKENS, int(context_limit * DEFAULT_SAFETY_MARGIN_RATIO))
+        base_prompt_tokens = self.estimate_messages_tokens(messages_without_knowledge)
+        tools_tokens = self.estimate_tools_tokens(list(tools or []))
+        available_tokens = max(
+            0,
+            context_limit - reserved_completion_tokens - safety_margin_tokens - base_prompt_tokens - tools_tokens,
+        )
+        complexity, target_tokens = self._classify_rag_complexity(query)
+        configured_cap = runtime_config.get("rag_context_tokens")
+        if isinstance(configured_cap, int) and configured_cap > 0:
+            target_tokens = min(target_tokens, configured_cap)
+        budget_tokens = min(target_tokens, available_tokens)
+        return RagBudgetPlan(
+            complexity=complexity,
+            target_tokens=target_tokens,
+            available_tokens=available_tokens,
+            budget_tokens=budget_tokens,
+            context_limit=context_limit,
+            reserved_completion_tokens=reserved_completion_tokens,
+            safety_margin_tokens=safety_margin_tokens,
+            base_prompt_tokens=base_prompt_tokens,
+            tools_tokens=tools_tokens,
+            capped_by_model_window=budget_tokens < target_tokens,
+        )
+
+    @staticmethod
+    def _classify_rag_complexity(query: str) -> tuple[str, int]:
+        normalized = re.sub(r"\s+", "", query or "").lower()
+        comprehensive_markers = (
+            "完整表格", "完整列表", "全部", "所有", "逐条", "逐项", "跨章节", "跨文件",
+            "综合分析", "完整对比", "完整整理", "分别列出", "不要遗漏", "全文",
+        )
+        complex_markers = (
+            "总结", "整理", "归纳", "对比", "比较", "分析", "章节", "目录", "表格", "列表",
+            "多个", "结合", "主要特点", "目标", "知识点",
+        )
+        if any(marker in normalized for marker in comprehensive_markers):
+            return "comprehensive", RAG_BUDGET_COMPREHENSIVE_TOKENS
+        if any(marker in normalized for marker in complex_markers) or len(normalized) >= 80:
+            return "complex", RAG_BUDGET_COMPLEX_TOKENS
+        return "simple", RAG_BUDGET_SIMPLE_TOKENS
+
     def estimate_messages_tokens(self, messages: List[Message]) -> int:
         return sum(self.estimate_message_tokens(message) for message in messages)
 
@@ -184,6 +280,20 @@ class ContextBudgetManager:
         ascii_tokens = max(1, ascii_chars // 4) if ascii_chars else 0
         non_ascii_tokens = int(non_ascii_chars * 1.2)
         return max(1, ascii_tokens + non_ascii_tokens)
+
+    def fit_text_to_token_budget(self, text: str, token_budget: int) -> str:
+        if token_budget <= 0 or not text:
+            return ""
+        if self.estimate_text_tokens(text) <= token_budget:
+            return text
+        low, high = 0, len(text)
+        while low < high:
+            middle = (low + high + 1) // 2
+            if self.estimate_text_tokens(text[:middle]) <= token_budget:
+                low = middle
+            else:
+                high = middle - 1
+        return text[:low]
 
     def _resolve_context_window(self, model_name: str, runtime_config: Dict[str, Any]) -> int:
         configured = runtime_config.get("context_window") or runtime_config.get("context_window_tokens")

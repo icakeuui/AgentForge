@@ -135,9 +135,7 @@ async def test_runtime_assembler_applies_default_builtin_profile_for_tool_enable
     )
 
     assert runtime.resolution_source == "default_builtin_profile"
-    assert "builtin/websearch" in runtime.bound_tool_ids
     assert "builtin/calculate" in runtime.bound_tool_ids
-    assert "builtin/websearch" in runtime.resolved_tool_names
     assert "builtin/calculate" in runtime.resolved_tool_names
     assert runtime.unavailable_requested_tools == []
 
@@ -168,8 +166,8 @@ async def test_runtime_assembler_defaults_missing_capability_flags_to_tool_enabl
 
     assert runtime.supports_tools is True
     assert runtime.resolution_source == "default_builtin_profile"
-    assert "builtin/websearch" in runtime.bound_tool_ids
-    assert "builtin/websearch" in runtime.resolved_tool_names
+    assert "builtin/calculate" in runtime.bound_tool_ids
+    assert "builtin/calculate" in runtime.resolved_tool_names
 
     await engine.dispose()
 
@@ -199,7 +197,7 @@ async def test_runtime_assembler_treats_legacy_supports_tools_false_as_tool_enab
 
     assert runtime.supports_tools is True
     assert runtime.resolution_source == "default_builtin_profile"
-    assert "builtin/websearch" in runtime.bound_tool_ids
+    assert "builtin/calculate" in runtime.bound_tool_ids
 
     await engine.dispose()
 

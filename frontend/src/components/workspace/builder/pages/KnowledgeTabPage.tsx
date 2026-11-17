@@ -107,6 +107,19 @@ export function KnowledgeTabPage() {
     return () => window.clearTimeout(timer)
   }, [currentAgentId])
 
+  useEffect(() => {
+    if (currentAgentId === null || !documents.some((item) => item.status === 'PROCESSING')) return
+    const agentId = currentAgentId
+    const timer = window.setInterval(() => {
+      void knowledgeAdapter.listDocuments(agentId).then((next) => {
+        if (useAgentStore.getState().current_agent_id === agentId) setDocuments(next)
+      }).catch(() => {
+        // Keep the current status visible; the next poll can recover.
+      })
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [currentAgentId, documents])
+
   async function handleSave() {
     if (!canSave || currentAgentId === null) return
     setIsSaving(true)
@@ -139,7 +152,11 @@ export function KnowledgeTabPage() {
       setDocuments((prev) => [created, ...prev])
       setSelectedFile(null)
       setFileTitle('')
-      notify.success('文件知识已存入')
+      if (created.embedding_status === 'failed') {
+        notify.error(`文件已解析，但向量索引失败：${created.embedding_error || '请检查向量模型配置'}`)
+      } else {
+        notify.success(created.embedding_status === 'completed' ? '文件知识已索引并可检索' : '文件已接收，正在建立索引')
+      }
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '文件上传失败')
     } finally {
@@ -220,6 +237,18 @@ export function KnowledgeTabPage() {
       notify.success('知识已删除')
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '删除失败')
+    }
+  }
+
+  async function handleRetry(documentId: string) {
+    if (currentAgentId === null) return
+    try {
+      const next = await knowledgeAdapter.retryIndex(currentAgentId, documentId)
+      if (useAgentStore.getState().current_agent_id !== currentAgentId) return
+      setDocuments((previous) => previous.map((item) => item.id === documentId ? next : item))
+      notify.success(next.status === 'PROCESSING' ? '已开始重新索引' : '索引已恢复')
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '重新索引失败')
     }
   }
 
@@ -336,7 +365,7 @@ export function KnowledgeTabPage() {
                 }}
                 disabled={currentAgentId === null || isUploading}
               >
-                {isUploading ? '正在解析...' : '上传并存入'}
+                {isUploading ? '正在解析（扫描版 PDF 可能进行 OCR）...' : '上传并存入'}
               </Button>
             </div>
           </section>
@@ -396,13 +425,19 @@ export function KnowledgeTabPage() {
                             {item.chunk_count} 个分片 · {asMetadataNumber(item.metadata, 'article_count') ?? 0} 个条款 · {formatDate(item.created_at)}
                           </p>
                         </div>
-                        <Button variant="ghost" size="icon" aria-label="删除知识" title="删除知识" onClick={() => void handleDelete(item.id)}>
-                          <Trash2 size={14} className="text-text-muted" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          {(item.embedding_status === 'failed' || (item.status === 'PROCESSING' && Date.now() - new Date(item.updated_at).getTime() > 30 * 60 * 1000)) ? (
+                            <button type="button" className="rounded-token-sm px-2 py-1 text-xs text-primary hover:bg-primary/10" onClick={() => void handleRetry(item.id)}>重试索引</button>
+                          ) : null}
+                          <Button variant="ghost" size="icon" aria-label="删除知识" title="删除知识" onClick={() => void handleDelete(item.id)}>
+                            <Trash2 size={14} className="text-text-muted" />
+                          </Button>
+                        </div>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-text-muted">
                         <span className="rounded-token-sm bg-bg-soft px-2 py-0.5">{formatDocumentType(item.document_type)}</span>
-                        <span className="rounded-token-sm bg-bg-soft px-2 py-0.5">{item.status}</span>
+                        <span className="rounded-token-sm bg-bg-soft px-2 py-0.5">{item.embedding_status === 'completed' ? '可检索' : item.embedding_status === 'failed' ? '处理失败' : asMetadataString(item.metadata, 'processing_stage') === 'parsing_or_ocr' ? '解析 / OCR 中' : item.status === 'PROCESSING' ? '索引中' : '待索引'}</span>
+                        {item.embedding_error ? <span title={item.embedding_error} className="max-w-full truncate rounded-token-sm bg-bg-soft px-2 py-0.5">{item.embedding_error}</span> : null}
                         {asMetadataString(item.metadata, 'parser_version') ? (
                           <span className="rounded-token-sm bg-bg-soft px-2 py-0.5">{asMetadataString(item.metadata, 'parser_version')}</span>
                         ) : null}

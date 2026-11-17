@@ -103,8 +103,48 @@ def test_context_budget_manager_caps_oversized_reserved_completion_tokens():
         runtime_config={},
     )
 
-    assert result.report.context_limit == 8192
+    assert result.report.context_limit == 32768
     assert result.report.reserved_completion_tokens < 100000
     assert result.report.prompt_budget >= 3072
     assert result.exceeded is False
     assert "reserved_completion_tokens_capped_to_context_window" in result.report.notes
+
+
+def test_deepseek_legacy_alias_uses_conservative_known_window():
+    manager = ContextBudgetManager()
+    result = manager.fit(
+        messages=[Message(role="user", content="hello")],
+        tools=[],
+        model_name="deepseek-chat",
+        max_completion_tokens=2048,
+        runtime_config={},
+    )
+    assert result.report.context_limit == 128000
+
+
+def test_rag_budget_tiers_are_token_based_and_model_capped():
+    manager = ContextBudgetManager()
+    messages = [Message(role="system", content="system"), Message(role="user", content="question")]
+    simple = manager.plan_rag_budget(
+        query="什么是TCP？", messages_without_knowledge=messages, tools=[],
+        model_name="deepseek-chat", max_completion_tokens=2048, runtime_config={},
+    )
+    complex_plan = manager.plan_rag_budget(
+        query="整理第五章TCP与UDP的主要特点", messages_without_knowledge=messages, tools=[],
+        model_name="deepseek-chat", max_completion_tokens=2048, runtime_config={},
+    )
+    comprehensive = manager.plan_rag_budget(
+        query="跨文件综合分析并逐条列出全部内容，不要遗漏", messages_without_knowledge=messages, tools=[],
+        model_name="deepseek-chat", max_completion_tokens=2048, runtime_config={},
+    )
+    assert simple.budget_tokens == 8000
+    assert complex_plan.budget_tokens == 16000
+    assert comprehensive.budget_tokens == 32000
+
+    capped = manager.plan_rag_budget(
+        query="完整表格全部列出", messages_without_knowledge=messages, tools=[],
+        model_name="unknown-model", max_completion_tokens=4096,
+        runtime_config={"context_window": 12000},
+    )
+    assert capped.budget_tokens < capped.target_tokens
+    assert capped.capped_by_model_window is True

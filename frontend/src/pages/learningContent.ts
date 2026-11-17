@@ -11,10 +11,11 @@ export interface LearningCourse {
 
 export interface LearningStage {
   title: string
+  goal: string
   description: string
   topics: string[]
   courseIds: string[]
-  platformLink: string
+  practice: { label: string; guideSlug?: string; to?: string }
 }
 
 export const pdfUrl = '/learning/Hello-Agents.pdf'
@@ -85,28 +86,43 @@ export const courses: LearningCourse[] = [
 
 export const stages: LearningStage[] = [
   {
-    title: '认识智能体', description: '建立概念：Agent、Workflow、LLM 和感知—思考—行动循环。',
-    topics: ['什么是 Agent', 'Agent 与 Workflow', 'LLM 驱动原理', 'Agent Loop'],
-    courseIds: ['agent-intro', 'llm-basics', 'agent-loop'], platformLink: '认识现有智能体',
+    title: '认识智能体',
+    goal: '理解智能体是什么，以及大语言模型与智能体之间的关系。',
+    description: '建立概念：Agent、Workflow、LLM 和感知—思考—行动循环。',
+    topics: ['什么是 Agent', 'Agent 与传统 Workflow 的区别', '大语言模型基础', '智能体的基本组成', 'Agent Loop', '感知、思考、行动与反馈'],
+    courseIds: ['agent-intro', 'llm-basics', 'agent-loop'],
+    practice: { label: '在 AgentForge 观察一个已有智能体', to: '/develop/agents' },
   },
   {
-    title: '搭建智能体', description: '把提示词、模型连接与工具组织成一个可运行的智能体。',
-    topics: ['System Prompt', '模型连接与 OpenAI Compatible 接口', 'Agent 配置', '工具调用'],
-    courseIds: ['prompt', 'tools'], platformLink: '配置智能体',
+    title: '搭建智能体',
+    goal: '了解智能体如何完成任务，并掌握基本的构建方法。',
+    description: '把提示词、模型连接与基本配置组织成一个可运行的智能体。',
+    topics: ['Prompt 与 System Prompt', 'Agent 的角色与任务设置', 'ReAct 基本思想', 'Agent 的任务执行流程', 'Agent 构建方法与常用框架', '智能体基本配置'],
+    courseIds: ['prompt', 'react'],
+    practice: { label: '跟着指南创建第一个智能体', guideSlug: 'first-agent' },
   },
   {
-    title: '知识与检索', description: '学习 Embedding、向量数据库、RAG、知识库与记忆。',
-    topics: ['Embedding', '向量检索', 'RAG 与知识库', 'Memory'],
-    courseIds: ['embedding', 'rag'], platformLink: '体验知识库',
+    title: '知识与检索',
+    goal: '理解智能体如何利用外部专业知识完成问答。',
+    description: '学习 Embedding、向量数据库、RAG、知识库与记忆。',
+    topics: ['Embedding 基础', '文档解析与文本切分', '向量数据库', '语义检索', 'RAG 检索增强生成', '知识来源追踪', '上下文与记忆机制'],
+    courseIds: ['embedding', 'rag'],
+    practice: { label: '知识库上传与检索实践', guideSlug: 'knowledge' },
   },
   {
-    title: '进阶智能体', description: '理解 ReAct、规划、反思、上下文工程与通信协议。',
-    topics: ['ReAct / Planning / Reflection', '上下文工程', 'MCP / A2A'],
-    courseIds: ['react', 'multi-agent'], platformLink: '查看运行过程',
+    title: '进阶智能体',
+    goal: '了解智能体如何利用工具执行更复杂的任务。',
+    description: '理解工具调用、任务执行、协作与评估优化。',
+    topics: ['Tool Calling', 'Skills', '工具调用流程', '多步骤任务执行', '智能体通信与协作', '智能体评估与优化'],
+    courseIds: ['tools', 'multi-agent'],
+    practice: { label: '工具配置与运行实践', guideSlug: 'tools' },
   },
   {
-    title: '综合实践', description: '通过案例、评估和完整应用，把所学连接到开发过程。',
-    topics: ['案例学习', '多智能体概念', '智能体评估', '完整 Agent 应用'],
-    courseIds: ['complete-agent'], platformLink: '前往智能体开发',
+    title: '综合实践',
+    goal: '通过真实应用案例理解专业智能体的设计与实现。',
+    description: '通过案例、评估和完整应用，把所学连接到开发过程。',
+    topics: ['应用场景分析', '智能体方案设计', '模型与提示词配置', '专业知识库构建', '智能体运行与测试', '实际应用效果评估'],
+    courseIds: ['complete-agent'],
+    practice: { label: '查看知识竞赛助手完整案例', to: '/learn/cases/knowledge-quiz' },
   },
 ]

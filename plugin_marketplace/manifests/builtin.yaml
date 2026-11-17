@@ -18,7 +18,7 @@ tools:
     requires_confirmation: false
     allowed_intents: ["DIRECT_CHAT", "TOOL_OPTIONAL", "TOOL_REQUIRED"]
     domains: ["utility"]
-    max_calls_per_run: 2
+    max_calls_per_run: 1
     input_schema:
       type: object
       properties:
@@ -77,47 +77,3 @@ tools:
           type: string
           description: Arithmetic expression to calculate
       required: ["expression"]
-
-  - name: websearch
-    display_name: 网页搜索
-    description: Search the web for current public information
-    risk_level: medium
-    side_effect: external_read
-    requires_confirmation: false
-    allowed_intents: ["TOOL_OPTIONAL", "TOOL_REQUIRED"]
-    domains: ["web_search"]
-    max_calls_per_run: 2
-    input_schema:
-      type: object
-      properties:
-        query:
-          type: string
-          description: Search query
-        limit:
-          type: integer
-          description: Maximum number of results to return
-          minimum: 1
-          maximum: 5
-      required: ["query"]
-
-  - name: web_search
-    display_name: 网页搜索
-    description: Compatibility alias for websearch
-    risk_level: medium
-    side_effect: external_read
-    requires_confirmation: false
-    allowed_intents: ["TOOL_OPTIONAL", "TOOL_REQUIRED"]
-    domains: ["web_search"]
-    max_calls_per_run: 2
-    input_schema:
-      type: object
-      properties:
-        query:
-          type: string
-          description: Search query
-        limit:
-          type: integer
-          description: Maximum number of results to return
-          minimum: 1
-          maximum: 5
-      required: ["query"]

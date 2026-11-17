@@ -28,6 +28,13 @@ class QdrantVectorStore(VectorStore):
                     distance=models.Distance.COSINE,
                 ),
             )
+        else:
+            info = await self._client.get_collection(self._collection)
+            configured = info.config.params.vectors
+            if isinstance(configured, dict) or configured.size != dimensions:
+                raise ValueError(
+                    f"Qdrant collection vector size does not match embedding size {dimensions}"
+                )
 
     async def upsert(self, points: list[dict[str, Any]], dimensions: int) -> None:
         from qdrant_client import models
@@ -37,6 +44,7 @@ class QdrantVectorStore(VectorStore):
         await self.ensure_collection(dimensions)
         await self._client.upsert(
             collection_name=self._collection,
+            wait=True,
             points=[
                 models.PointStruct(
                     id=point["id"],
@@ -48,13 +56,14 @@ class QdrantVectorStore(VectorStore):
         )
 
     async def search(
-        self, vector: list[float], *, agent_id: str, limit: int = 5
+        self, vector: list[float], *, agent_id: str, model: str | None = None, limit: int = 5
     ) -> list[dict[str, Any]]:
         from qdrant_client import models
 
-        query_filter = models.Filter(
-            must=[models.FieldCondition(key="agent_id", match=models.MatchValue(value=agent_id))]
-        )
+        conditions = [models.FieldCondition(key="agent_id", match=models.MatchValue(value=agent_id))]
+        if model:
+            conditions.append(models.FieldCondition(key="model", match=models.MatchValue(value=model)))
+        query_filter = models.Filter(must=conditions)
         if hasattr(self._client, "search"):
             results = await self._client.search(
                 collection_name=self._collection,

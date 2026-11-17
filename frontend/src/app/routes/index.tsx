@@ -4,6 +4,7 @@ import { Navigate, createBrowserRouter } from 'react-router-dom'
 import {
   AgentsPage,
   AgentSquarePage,
+  DeepLearningPage,
   ForgotPasswordPage,
   HomePage,
   KnowledgeQuizCasePage,
@@ -61,6 +62,10 @@ export const router = createBrowserRouter([
   {
     path: '/learn',
     element: routeElement(<LearningCenterPage />),
+  },
+  {
+    path: '/learn/deep',
+    element: routeElement(<DeepLearningPage />),
   },
   {
     path: '/learn/cases/knowledge-quiz',

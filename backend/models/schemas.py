@@ -285,6 +285,7 @@ class IntentClassificationResult(BaseModel):
         "exact_clause",
         "policy_explanation",
         "document_summary",
+          "document_inventory",
         "fact_lookup",
         "tool_operation",
         "smalltalk",

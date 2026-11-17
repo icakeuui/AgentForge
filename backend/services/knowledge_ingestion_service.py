@@ -43,38 +43,46 @@ class KnowledgeIngestionService:
         config = agent.config if isinstance(agent.config, dict) else {}
         embedding_config = config.get("embedding") if isinstance(config.get("embedding"), dict) else {}
         document.embedding_status = "processing"
+        document.status = "PROCESSING"
         document.embedding_error = None
         await db.commit()
 
         try:
             provider = create_embedding_provider(embedding_config)
-            texts = [f"{chunk.title}\n{chunk.content}" for chunk in chunks]
-            vectors = await provider.embed_documents(texts)
-            if len(vectors) != len(chunks) or not vectors:
-                raise ValueError("Embedding provider returned no complete vector set")
-            dimensions = len(vectors[0])
-            if any(len(vector) != dimensions for vector in vectors):
-                raise ValueError("Embedding vectors have inconsistent dimensions")
-
+            if not chunks:
+                raise ValueError("Document has no searchable chunks")
             vector_store = QdrantVectorStore()
-            points = []
-            for chunk, vector in zip(chunks, vectors):
-                point_id = str(chunk.id)
-                points.append({
-                    "id": point_id,
-                    "vector": vector,
-                    "payload": {
-                        "agent_id": str(agent_id),
-                        "document_id": str(document.id),
-                        "chunk_id": point_id,
-                        "model": provider.model_name,
-                        "dimensions": dimensions,
-                        "chunk_index": chunk.chunk_index,
-                    },
-                })
-            await vector_store.upsert(points, dimensions)
+            dimensions = 0
+            for offset in range(0, len(chunks), 32):
+                batch = chunks[offset:offset + 32]
+                vectors = await provider.embed_documents([f"{chunk.title}\n{chunk.content}" for chunk in batch])
+                if len(vectors) != len(batch) or not vectors:
+                    raise ValueError("Embedding provider returned an incomplete vector batch")
+                batch_dimensions = len(vectors[0])
+                if not batch_dimensions or any(len(vector) != batch_dimensions for vector in vectors):
+                    raise ValueError("Embedding vectors have inconsistent dimensions")
+                if dimensions and dimensions != batch_dimensions:
+                    raise ValueError("Embedding dimensions changed between batches")
+                dimensions = batch_dimensions
+                await vector_store.upsert([
+                    {
+                        "id": str(chunk.id),
+                        "vector": vector,
+                        "payload": {
+                            "agent_id": str(agent_id),
+                            "team_id": str(document.team_id),
+                            "document_id": str(document.id),
+                            "chunk_id": str(chunk.id),
+                            "model": provider.model_name,
+                            "dimensions": dimensions,
+                            "chunk_index": chunk.chunk_index,
+                        },
+                    }
+                    for chunk, vector in zip(batch, vectors)
+                ], dimensions)
         except Exception as exc:
             document.embedding_status = "failed"
+            document.status = "FAILED"
             document.embedding_error = str(exc)[:2000]
             for chunk in chunks:
                 chunk.embedding_status = "failed"
@@ -82,6 +90,7 @@ class KnowledgeIngestionService:
             return IngestionResult(status="failed", embedded_chunk_count=0, error=document.embedding_error)
 
         document.embedding_status = "completed"
+        document.status = "ACTIVE"
         document.embedding_provider = embedding_config.get("provider", "openai_compatible")
         document.embedding_model_name = provider.model_name
         document.embedding_dimensions = dimensions

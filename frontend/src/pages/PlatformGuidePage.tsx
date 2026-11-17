@@ -42,7 +42,7 @@ export function PlatformGuidePage() {
     <PlatformShell>
     <main className="min-h-screen bg-bg text-text-main">
       <div className="mx-auto w-full max-w-6xl px-5 py-5 sm:px-8">
-        <LearningHeader title="AgentForge 使用指南" subtitle="先会用平台，再学习智能体原理" backTo="/learn" />
+        <LearningHeader title="AgentForge 使用指南" subtitle="先会用平台，再学习智能体原理" backTo="/learn/deep" />
         <div className="space-y-7 py-8">
           <Card className="p-5 sm:p-6">
             <Badge variant="info">平台操作 · 15 个主题</Badge>
@@ -65,7 +65,7 @@ export function PlatformGuidePage() {
               <h2 className="text-base font-semibold">想进一步理解 Agent 原理？</h2>
               <p className="mt-1 text-sm text-text-sub">五阶段学习路径和 Hello-Agents 教程继续讲 Prompt、RAG、Embedding 与 ReAct。</p>
             </div>
-            <Button type="button" variant="secondary" className="shrink-0 self-start" onClick={() => navigate('/learn#learning-paths')}>
+            <Button type="button" variant="secondary" className="shrink-0 self-start" onClick={() => navigate('/learn/deep')}>
               前往智能体学习路径 <BookOpen size={15} />
             </Button>
           </Card>

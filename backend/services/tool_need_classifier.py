@@ -14,14 +14,18 @@ class ToolNeedClassifier:
     drive tool use.
     """
 
-    VERSION = "retrieval-only-v2"
+    VERSION = "retrieval-only-v3"
 
     KB_REQUIRED_PATTERNS = [
-        r"第\s*[一二三四五六七八九十百0-9]+\s*[条款章节项]",
+        r"第\s*[一二三四五六七八九十百0-9]+\s*[条款项]",
         r"\barticle\s+[0-9]+\b",
         r"\bsection\s+[0-9]+\b",
     ]
     KB_REQUIRED_KEYWORDS = [
+        "我上传的",
+        "两份资料",
+        "结合资料",
+        "竞赛目录",
         "校规",
         "规定",
         "制度",
@@ -78,6 +82,10 @@ class ToolNeedClassifier:
             if re.search(pattern, lowered, flags=re.IGNORECASE):
                 exact_clause = True
                 matched_rules.append(f"kb_required_pattern:{pattern}")
+        if re.search(r"第\s*[一二三四五六七八九十百0-9]+\s*[章节]", text):
+            matched_rules.append("kb_required_chapter_or_section")
+        if re.search(r"(?:根据|依据).{0,16}(?:上传|知识库|文档|文件|资料)", text):
+            matched_rules.append("kb_required_uploaded_source")
         for keyword in self.KB_REQUIRED_KEYWORDS:
             if keyword in text:
                 matched_rules.append(f"kb_required_keyword:{keyword}")
@@ -93,7 +101,7 @@ class ToolNeedClassifier:
                 requires_user_confirmation=False,
             )
 
-        if lowered in self.SMALLTALK or (len(text) <= 12 and not any(marker in text for marker in self.QUESTION_MARKERS)):
+        if lowered in self.SMALLTALK:
             return IntentClassificationResult(
                 intent_type="DIRECT_CHAT",
                 query_subtype="smalltalk",
@@ -104,22 +112,30 @@ class ToolNeedClassifier:
                 requires_user_confirmation=False,
             )
 
-        if any(marker in text for marker in self.QUESTION_MARKERS):
+        # An explicit tool or mutation command is not a knowledge question.
+        # Keep tool authorization in the separate policy gate.
+        named_tools = [name.rsplit("/", 1)[-1].lower() for name in (tool_catalog_summary or [])]
+        explicit_tool = any(name and name in lowered for name in named_tools)
+        mutation_command = bool(re.match(r"^(?:请|帮我|替我)?(?:删除|修改|创建|新建|发送|执行|调用)", text))
+        if explicit_tool or mutation_command:
             return IntentClassificationResult(
-                intent_type="KB_OPTIONAL",
-                query_subtype="fact_lookup",
-                confidence=0.66,
-                matched_rules=["fallback:question"],
+                intent_type="DIRECT_CHAT",
+                query_subtype="tool_operation",
+                confidence=0.8,
+                matched_rules=["explicit_tool_or_action"],
                 requires_citation=False,
                 allow_direct_answer=True,
                 requires_user_confirmation=False,
             )
 
+        # A document-backed agent may receive a topic or an imperative rather
+        # than a question. Optional retrieval probes its own indexed sources;
+        # evidence relevance is decided separately by the retrieval service.
         return IntentClassificationResult(
-            intent_type="DIRECT_CHAT",
-            query_subtype="smalltalk",
+            intent_type="KB_OPTIONAL",
+            query_subtype="fact_lookup",
             confidence=0.6,
-            matched_rules=["fallback:direct_chat"],
+            matched_rules=["fallback:optional_knowledge_probe"],
             requires_citation=False,
             allow_direct_answer=True,
             requires_user_confirmation=False,

@@ -32,6 +32,8 @@ class AgentRuntimeAssembler:
         self.runtime_backend = runtime_backend
         self.default_max_steps = default_max_steps
 
+    DISABLED_TOOL_ALIASES = {"websearch", "web_search", "builtin/websearch", "builtin/web_search"}
+
     async def assemble(
         self,
         *,
@@ -39,7 +41,11 @@ class AgentRuntimeAssembler:
         agent_config: Dict[str, Any],
         user_input: str,
     ) -> ResolvedAgentRuntime:
-        configured_tools = self._normalize_tool_ids(agent_config.get("tools") or [])
+        configured_tools = [
+            tool_id
+            for tool_id in self._normalize_tool_ids(agent_config.get("tools") or [])
+            if tool_id not in self.DISABLED_TOOL_ALIASES
+        ]
         has_explicit_tool_config = "tools" in agent_config
         capability_flags = agent_config.get("capability_flags") if isinstance(agent_config.get("capability_flags"), dict) else {}
         supports_tools = not bool(capability_flags.get("tools_disabled", False))
@@ -53,7 +59,11 @@ class AgentRuntimeAssembler:
         if config_resolution is not None and config_resolution.missing_tool_ids:
             unresolved_tools.extend(config_resolution.missing_tool_ids)
 
-        bound_tool_ids = await self.runtime_backend.get_agent_tool_ids(agent_id)
+        bound_tool_ids = [
+            tool_id
+            for tool_id in await self.runtime_backend.get_agent_tool_ids(agent_id)
+            if tool_id not in self.DISABLED_TOOL_ALIASES
+        ]
         if has_explicit_tool_config and not configured_tools:
             # Explicit tools=[] must win over any stale bindings from older saves.
             if bound_tool_ids:
